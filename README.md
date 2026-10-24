@@ -1,60 +1,75 @@
+# Python API Starter — Task 02
 
-# Python API Starter
+A simple REST API built with **FastAPI** to create, retrieve, list, update, and delete chat messages. This project builds on Task 01 and introduces request validation, HTTP status codes, query parameters, automated testing, and API documentation.
 
-A reproducible FastAPI project using Python 3.12+, uv, Uvicorn, and Docker Compose.
+## Features
 
-## Requirements
+- Create messages with a role and content.
+- List messages with pagination and optional role filtering.
+- Retrieve a message by its ID.
+- Update message content.
+- Delete a message.
+- Validate request bodies and query parameters using Pydantic and FastAPI.
+- Return appropriate HTTP status codes and error responses.
+- Explore endpoints through automatically generated Swagger documentation.
+- Store messages in memory using a Python list.
 
-- Python 3.12+ and uv for local development
-- Docker Desktop with Docker Compose for containerized development
-- Git
+## Tech Stack
+
+- Python 3.12+
+- FastAPI
+- Uvicorn
+- Pydantic
+- uv
+- Pytest
+- HTTPX
+
+## Project Structure
+
+```text
+Netsol/
+├── src/
+│   └── netsol/
+│       ├── __init__.py
+│       └── main.py
+├── tests/
+│   └── test_messages.py
+├── .env.example
+├── .gitignore
+├── .python-version
+├── .dockerignore
+├── Dockerfile
+├── compose.yaml
+├── pyproject.toml
+├── uv.lock
+└── README.md
+```
 
 ## Setup
 
-Install project dependencies:
+### 1. Install dependencies
+
+Make sure Python 3.12+ and `uv` are installed.
 
 ```powershell
-uv sync --locked
+uv sync
+uv add --dev pytest httpx
 ```
 
-## Run locally
+### 2. Run the application
 
 ```powershell
 uv run uvicorn python_api_starter.main:app --reload --app-dir src
 ```
 
-Health endpoint: http://127.0.0.1:8000/health
+The API will run locally at:
 
-Interactive API documentation: http://127.0.0.1:8000/docs
+- **Base URL:** http://127.0.0.1:8000
+- **Swagger UI:** http://127.0.0.1:8000/docs
+- **Health check:** http://127.0.0.1:8000/health
 
-## Run with Docker Compose
+## API Endpoints
 
-```powershell
-docker compose up --build
-```
+All message endpoints use the `/api/v1` prefix.
 
-Health endpoint: http://127.0.0.1:8000/health
-
-Stop the containers with:
-
-```powershell
-docker compose down
-```
-
-## Configuration
-
-See `.env.example` for the example application configuration.
-
-## Project layout
-
-- `src/python_api_starter/main.py`: FastAPI application and health endpoint
-- `pyproject.toml`: project metadata and dependencies
-- `uv.lock`: locked dependency versions
-- `Dockerfile`: container image instructions
-- `compose.yaml`: Docker Compose configuration
-- `.gitignore`: excludes generated files and local secrets
-- `.env.example`: example configuration
-
-## Health endpoint
-
-`GET /health` returns HTTP 200 with JSON containing the service status and version.
+| Method
