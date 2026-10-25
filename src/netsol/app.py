@@ -4,6 +4,9 @@ from typing import Literal
 
 from fastapi import FastAPI, HTTPException, Query, Response, status
 from pydantic import BaseModel, Field, field_validator
+from netsol.chat import router as chat_router
+
+
 
 
 app = FastAPI(
@@ -75,6 +78,8 @@ def find_message(message_id: int) -> dict:
 
 
 # ---------- API endpoints ----------
+
+app.include_router(chat_router)
 
 @app.get("/health", tags=["Health"])
 def health_check():
