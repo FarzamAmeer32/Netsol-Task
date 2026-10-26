@@ -1,174 +1,162 @@
 
-from datetime import datetime, timezone
-from typing import Literal
+import re
+from contextlib import asynccontextmanager
+from uuid import uuid4
 
-from fastapi import FastAPI, HTTPException, Query, Response, status
-from pydantic import BaseModel, Field, field_validator
-from netsol.chat import router as chat_router
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+
+from netsol.api.v1.health import router as health_router
+from netsol.api.v1.router import router as v1_router
+from netsol.core.config import get_settings
+from netsol.core.exceptions import (
+    LLMConfigurationError,
+    LLMRateLimitError,
+    LLMUnavailableError,
+)
+from netsol.schemas.chat import ErrorResponse
 
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Validate environment configuration when the app starts.
+    get_settings()
+    yield
 
 
 app = FastAPI(
-    title="Python API Starter",
-    version="0.2.0",
-    description="A simple in-memory Messages API.",
+    title="Netsol API",
+    version="0.4.0",
+    lifespan=lifespan,
 )
 
 
-# ---------- Request and response models ----------
+@app.middleware("http")
+async def request_id_middleware(request: Request, call_next):
+    supplied_id = request.headers.get("X-Request-ID", "")
 
-class MessageCreate(BaseModel):
-    role: Literal["user", "assistant"]
-    content: str = Field(min_length=1, max_length=2000)
+    if re.fullmatch(r"[A-Za-z0-9._:-]{1,64}", supplied_id):
+        request_id = supplied_id
+    else:
+        request_id = str(uuid4())
 
-    @field_validator("content")
-    @classmethod
-    def validate_content(cls, value: str) -> str:
-        value = value.strip()
+    request.state.request_id = request_id
 
-        if not value:
-            raise ValueError("Content must not be empty or whitespace.")
+    try:
+        response = await call_next(request)
+    except Exception:
+        # Avoid exposing internal exception details to the client.
+        response = error_response(
+            request,
+            500,
+            "internal_server_error",
+            "An unexpected error occurred.",
+        )
 
-        return value
-
-
-class MessageUpdate(BaseModel):
-    content: str = Field(min_length=1, max_length=2000)
-
-    @field_validator("content")
-    @classmethod
-    def validate_content(cls, value: str) -> str:
-        value = value.strip()
-
-        if not value:
-            raise ValueError("Content must not be empty or whitespace.")
-
-        return value
+    response.headers["X-Request-ID"] = request_id
+    return response
 
 
-class MessageResponse(BaseModel):
-    id: int
-    role: Literal["user", "assistant"]
-    content: str
-    created_at: datetime
+def error_response(
+    request: Request,
+    status_code: int,
+    code: str,
+    message: str,
+):
+    request_id = getattr(
+        request.state, "request_id", str(uuid4())
+    )
 
+    body = ErrorResponse(
+        error={
+            "code": code,
+            "message": message,
+            "request_id": request_id,
+        }
+    )
 
-class ErrorResponse(BaseModel):
-    detail: str
-
-
-# ---------- In-memory storage ----------
-
-messages: list[dict] = []
-next_message_id = 1
-
-
-# ---------- Helper function ----------
-
-def find_message(message_id: int) -> dict:
-    for message in messages:
-        if message["id"] == message_id:
-            return message
-
-    raise HTTPException(
-        status_code=status.HTTP_404_NOT_FOUND,
-        detail=f"Message with ID {message_id} not found.",
+    return JSONResponse(
+        status_code=status_code,
+        content=body.model_dump(),
+        headers={"X-Request-ID": request_id},
     )
 
 
-# ---------- API endpoints ----------
-
-app.include_router(chat_router)
-
-@app.get("/health", tags=["Health"])
-def health_check():
-    return {"status": "ok", "version": app.version}
-
-
-@app.post(
-    "/api/v1/messages",
-    response_model=MessageResponse,
-    status_code=status.HTTP_201_CREATED,
-    tags=["Messages"],
-    summary="Create a message",
-    description="Create a user or assistant message.",
-    responses={422: {"description": "Invalid message data"}},
-)
-def create_message(payload: MessageCreate):
-    global next_message_id
-
-    message = {
-        "id": next_message_id,
-        "role": payload.role,
-        "content": payload.content,
-        "created_at": datetime.now(timezone.utc),
-    }
-
-    messages.append(message)
-    next_message_id += 1
-
-    return message
-
-
-@app.get(
-    "/api/v1/messages",
-    response_model=list[MessageResponse],
-    tags=["Messages"],
-    summary="List messages",
-    description="List messages with pagination and optional role filtering.",
-)
-def list_messages(
-    limit: int = Query(default=20, ge=1, le=100),
-    offset: int = Query(default=0, ge=0),
-    role: Literal["user", "assistant"] | None = Query(default=None),
+@app.exception_handler(LLMUnavailableError)
+async def llm_unavailable_handler(
+    request: Request, exc: LLMUnavailableError
 ):
-    result = messages
-
-    if role is not None:
-        result = [m for m in result if m["role"] == role]
-
-    return result[offset:offset + limit]
-
-
-@app.get(
-    "/api/v1/messages/{message_id}",
-    response_model=MessageResponse,
-    tags=["Messages"],
-    summary="Get a message",
-    responses={404: {"model": ErrorResponse, "description": "Message not found"}},
-)
-def get_message(message_id: int):
-    return find_message(message_id)
+    return error_response(
+        request,
+        503,
+        "llm_unavailable",
+        "The chatbot service is temporarily unavailable.",
+    )
 
 
-@app.patch(
-    "/api/v1/messages/{message_id}",
-    response_model=MessageResponse,
-    tags=["Messages"],
-    summary="Update a message",
-    responses={
-        404: {"model": ErrorResponse, "description": "Message not found"},
-        422: {"description": "Invalid message content"},
-    },
-)
-def update_message(message_id: int, payload: MessageUpdate):
-    message = find_message(message_id)
-    message["content"] = payload.content
-
-    return message
+@app.exception_handler(LLMRateLimitError)
+async def llm_rate_limit_handler(
+    request: Request, exc: LLMRateLimitError
+):
+    return error_response(
+        request,
+        429,
+        "llm_rate_limited",
+        "Please try again later.",
+    )
 
 
-@app.delete(
-    "/api/v1/messages/{message_id}",
-    status_code=status.HTTP_204_NO_CONTENT,
-    response_class=Response,
-    tags=["Messages"],
-    summary="Delete a message",
-    responses={404: {"model": ErrorResponse, "description": "Message not found"}},
-)
-def delete_message(message_id: int):
-    message = find_message(message_id)
-    messages.remove(message)
+@app.exception_handler(LLMConfigurationError)
+async def llm_configuration_handler(
+    request: Request, exc: LLMConfigurationError
+):
+    return error_response(
+        request,
+        503,
+        "llm_configuration_error",
+        "The chatbot service is not configured correctly.",
+    )
 
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(
+    request: Request, exc: HTTPException
+):
+    if isinstance(exc.detail, dict):
+        code = exc.detail.get("code", "http_error")
+        message = exc.detail.get("message", "The request could not be completed.")
+    else:
+        code = "http_error"
+        message = str(exc.detail)
+
+    return error_response(
+        request,
+        exc.status_code,
+        code,
+        message,
+    )
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(
+    request: Request, exc: RequestValidationError
+):
+    return error_response(
+        request,
+        422,
+        "validation_error",
+        "The request contains invalid or missing fields.",
+    )
+
+
+# Existing health endpoint stays at /health.
+app.include_router(health_router)
+
+# Messages and chat are available under /api/v1.
+app.include_router(v1_router)
+
+
+@app.get("/", tags=["Health"])
+async def root():
+    return {"status": "ok", "service": "Netsol API"}

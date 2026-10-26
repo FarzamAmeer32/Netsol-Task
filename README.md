@@ -1,180 +1,263 @@
-# Task 03 — Connect the First LLM
+# Netsol API — Task 04: Application Architecture
 
-A FastAPI application that connects a chatbot endpoint to Google's Gemini API using the official `google-genai` Python SDK.
+A modular FastAPI backend that separates API routes, request schemas, application configuration, error handling, and LLM service logic.
 
-This task introduces direct LLM API integration before using LangChain or LangGraph.
+This task refactors the Task 03 chatbot into a maintainable architecture while preserving the health check and in-memory messages API.
 
 ## Features
 
-- `POST /api/v1/chat` endpoint for AI-generated responses.
-- Separate asynchronous `generate_reply()` service.
-- Environment-based configuration for the API key, model, timeout, and output-token limit.
-- Pydantic request and response models.
-- Input validation and whitespace trimming.
-- Token usage reporting when available.
-- Safe handling of provider authentication, rate-limit, and availability errors.
-- Swagger UI documentation.
-
-## Tech Stack
-
-- Python 3.12+
-- FastAPI
-- Google Gen AI SDK (`google-genai`)
-- Pydantic and Pydantic Settings
-- Uvicorn
-- uv
-- Pytest and HTTPX for automated testing
+- **Health check:** Verify that the API is responding.
+- **Messages API:** Create, list, retrieve, update, and delete messages using in-memory storage.
+- **Chat API:** Generate AI responses through the Gemini provider.
+- **Dependency injection:** Keep the chat endpoint independent of the concrete LLM implementation.
+- **Configuration management:** Load and validate environment-based settings.
+- **Standardized error responses:** Return consistent JSON error structures.
+- **Request IDs:** Accept valid `X-Request-ID` headers or generate IDs for request tracing.
+- **Automated tests:** Test routes and error handling without making real Gemini API calls.
 
 ## Project Structure
 
 ```text
-src/
-└── netsol/
-    ├── app.py
-    ├── chat.py
-    ├── config.py
-    └── llm_service.py
-
-.env
-.env.example
-pyproject.toml
-uv.lock
-README.md
-tests/
+.
+├── src/
+│   └── netsol/
+│       ├── __init__.py
+│       ├── app.py
+│       ├── api/
+│       │   ├── dependencies.py
+│       │   └── v1/
+│       │       ├── router.py
+│       │       ├── health.py
+│       │       ├── messages.py
+│       │       └── chat.py
+│       ├── core/
+│       │   ├── config.py
+│       │   └── exceptions.py
+│       ├── schemas/
+│       │   └── chat.py
+│       └── services/
+│           └── llm.py
+├── tests/
+│   ├── test_messages.py
+│   └── test_chat.py
+├── .env.example
+├── .gitignore
+├── pyproject.toml
+├── uv.lock
+└── README.md
 ```
 
-The structure above describes the intended files; adjust it to match the actual files in your repository.
+The structure above describes the intended layout. Keep any additional files already required by your project.
+
+## Architecture and Responsibilities
+
+| Component | Responsibility |
+|---|---|
+| `app.py` | Creates the FastAPI application, configures lifespan, middleware, and exception handlers, and registers routers. |
+| `api/v1/router.py` | Combines the versioned messages and chat routers. |
+| `api/v1/health.py` | Provides the health-check endpoint. |
+| `api/v1/messages.py` | Implements message CRUD operations using in-memory storage. |
+| `api/v1/chat.py` | Validates chat requests and invokes the injected LLM service. |
+| `api/dependencies.py` | Provides the LLM service through FastAPI dependency injection. |
+| `schemas/chat.py` | Defines chat request, response, usage, and error models. |
+| `services/llm.py` | Defines the LLM service interface and Gemini implementation. |
+| `core/config.py` | Loads and validates environment-based settings. |
+| `core/exceptions.py` | Defines application-specific LLM exceptions. |
+| `tests/` | Contains automated tests for API behavior and error handling. |
 
 ## Setup
 
+### Requirements
+
+- Python 3.12 or later
+- `uv`
+- A Gemini API key for live chat requests
+
 ### 1. Install dependencies
 
-```powershell
+From the project root:
+
+```bash
 uv sync
 ```
 
-If the dependencies have not yet been added:
+If the test dependencies have not yet been added:
 
-```powershell
-uv add google-genai pydantic-settings
+```bash
 uv add --dev pytest httpx
 ```
 
 ### 2. Configure environment variables
 
-Create a `.env` file in the project root:
+Create a `.env` file in the project root using `.env.example` as a template.
+
+Example:
 
 ```dotenv
-GEMINI_API_KEY=your_actual_api_key
+GEMINI_API_KEY=your_gemini_api_key
 LLM_MODEL=gemini-2.5-flash
 LLM_TIMEOUT_SECONDS=30
 LLM_MAX_OUTPUT_TOKENS=300
 ```
 
-Replace the API key placeholder with your own key. Never commit `.env` or share your API key publicly.
+Use your actual API key in your local `.env` file. Do not commit `.env` or expose API keys in source code, logs, or screenshots.
 
-The `.env.example` file should contain variable names and placeholder values only.
+The settings names must match those defined in `core/config.py`.
 
 ### 3. Run the application
 
-If your FastAPI application instance is defined in `src/netsol/app.py`, run:
-
-```powershell
+```bash
 uv run uvicorn netsol.app:app --reload --app-dir src
 ```
 
-Open the following URLs:
+The API will be available at:
 
-- API: http://127.0.0.1:8000
-- Swagger UI: http://127.0.0.1:8000/docs
-- Health check: http://127.0.0.1:8000/health
+- Base URL: `http://127.0.0.1:8000`
+- Swagger UI: `http://127.0.0.1:8000/docs`
+- ReDoc: `http://127.0.0.1:8000/redoc`
 
-## Chat API
+## API Endpoints
 
-### POST `/api/v1/chat`
+### Health
 
-Generates an AI response for a supplied message.
+| Method | Endpoint | Description |
+|---|---|---|
+| GET | `/health` | Returns the API health status |
+| GET | `/` | Returns basic service information |
 
-Request:
+Example response from `GET /health`:
 
 ```json
 {
-  "message": "Explain dependency injection in simple words."
+  "status": "ok"
 }
 ```
 
-Expected successful response (`200 OK`):
+### Messages
+
+| Method | Endpoint | Description |
+|---|---|---|
+| POST | `/api/v1/messages` | Create a message |
+| GET | `/api/v1/messages` | List messages |
+| GET | `/api/v1/messages/{message_id}` | Retrieve a message |
+| PATCH | `/api/v1/messages/{message_id}` | Update message content |
+| DELETE | `/api/v1/messages/{message_id}` | Delete a message |
+
+Create a message:
+
+```http
+POST /api/v1/messages
+Content-Type: application/json
+```
 
 ```json
 {
-  "answer": "Dependency injection provides an object with the dependencies it needs.",
+  "role": "user",
+  "content": "Hello"
+}
+```
+
+The messages API uses temporary in-memory storage. Messages are lost when the application restarts. No database is introduced in this task.
+
+### Chat
+
+| Method | Endpoint | Description |
+|---|---|---|
+| POST | `/api/v1/chat` | Generate an AI response |
+
+Example request:
+
+```http
+POST /api/v1/chat
+Content-Type: application/json
+X-Request-ID: chat-test-123
+```
+
+```json
+{
+  "message": "Explain REST APIs in simple words."
+}
+```
+
+Example success response:
+
+```json
+{
+  "answer": "A REST API allows applications to communicate using HTTP.",
   "model": "gemini-2.5-flash",
   "usage": {
-    "input_tokens": 12,
-    "output_tokens": 20
+    "input_tokens": 10,
+    "output_tokens": 15
   }
 }
 ```
 
-The answer and token counts are illustrative, not a real API result. Actual token usage may be unavailable.
+The answer and token usage depend on the actual provider response.
 
-### Validation
+## Error Handling
 
-- `message` must be a string.
-- Empty or whitespace-only messages are rejected.
-- Messages longer than 4,000 characters are rejected.
-- Invalid input returns `422 Unprocessable Entity`.
+The application maps known exceptions to safe, consistent error responses.
 
-### Error handling
+| HTTP status | Error code | Meaning |
+|---|---|---|
+| 404 | `not_found` | The requested message does not exist. |
+| 422 | `validation_error` | The request data is invalid. |
+| 429 | `llm_rate_limited` | The LLM provider is rate-limiting requests. |
+| 503 | `llm_unavailable` | The LLM provider is unavailable. |
+| 503 | `llm_configuration_error` | The LLM provider configuration is invalid. |
 
-| Status | Meaning |
-|---|---|
-| 422 | Invalid request data |
-| 429 | Provider rate limit reached |
-| 503 | Provider unavailable, timeout, or mapped provider authentication error |
+Example error response:
 
-Error responses should not expose API keys, raw provider responses, stack traces, or internal exception messages.
+```json
+{
+  "error": {
+    "code": "llm_unavailable",
+    "message": "The chatbot service is temporarily unavailable.",
+    "request_id": "chat-test-123"
+  }
+}
+```
 
-## Configuration
+The `X-Request-ID` response header allows a request to be correlated with server-side logs. Unexpected errors should be logged internally without exposing sensitive details to API clients.
 
-| Variable | Purpose |
-|---|---|
-| `GEMINI_API_KEY` | Authenticates requests to Gemini |
-| `LLM_MODEL` | Selects the Gemini model |
-| `LLM_TIMEOUT_SECONDS` | Sets the provider request timeout |
-| `LLM_MAX_OUTPUT_TOKENS` | Limits generated output size |
+## Dependency Injection and Testing
 
-## Token Usage and Cost Considerations
+The chat endpoint depends on the `LLMService` interface rather than directly creating a Gemini client inside the route.
 
-- **Input tokens:** Tokens used to process the submitted prompt and any other input sent to the model.
-- **Output tokens:** Tokens generated in the response.
-- **Timeout:** Limits how long the application waits for the provider request.
-- **Cost:** Depends on the selected model, token usage, and the provider's current pricing and free-tier limits.
+FastAPI dependency injection provides the service. Tests can replace that dependency using `app.dependency_overrides` and supply a fake implementation.
 
-Check the provider's current pricing and quota information before relying on a model for production workloads.
+This allows tests to verify:
 
-## Testing
+- Successful chat responses.
+- Request validation.
+- LLM provider failures.
+- Rate-limit and configuration errors.
+- Request ID behavior.
 
-Run the automated tests with:
+The tests do not need a real Gemini API call when the LLM dependency is overridden.
 
-```powershell
+Run the test suite:
+
+```bash
 uv run pytest -v
 ```
 
-Automated tests should use a mocked LLM service and must not make real paid API calls.
+Run individual test files:
 
-The test suite should cover successful generation, empty input, oversized input, provider timeout, authentication failure, and rate limiting.
+```bash
+uv run pytest tests/test_messages.py -v
+uv run pytest tests/test_chat.py -v
+```
 
-## Current Development Status
+## Scope of Task 04
 
-The chat endpoint and Gemini service have been implemented. During local verification, the chat endpoint returned `503 Service Unavailable`. The underlying provider error has not yet been confirmed, so a successful real Gemini response remains unverified.
+This task focuses on application architecture and maintainability.
 
-Automated test coverage and the complete acceptance criteria must be verified before considering Task 03 complete.
+It does not introduce:
 
-## Scope
+- PostgreSQL or another database.
+- Authentication or authorization.
+- LangChain or LangGraph.
+- New chatbot functionality beyond the existing LLM integration.
 
-This task uses the provider's official Python SDK directly.
-
-**LangChain and LangGraph have not been introduced.**
-
-Conversation history, database persistence, and workflow orchestration are outside the scope of this task.
+The goal is to make the existing API easier to maintain, test, and extend in later tasks.
