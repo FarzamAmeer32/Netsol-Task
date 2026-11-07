@@ -1,60 +1,33 @@
-
 # Python API Starter
 
-A reproducible FastAPI project using Python 3.12+, uv, Uvicorn, and Docker Compose.
+A basic FastAPI project using Python and uv.
 
 ## Requirements
 
-- Python 3.12+ and uv for local development
-- Docker Desktop with Docker Compose for containerized development
-- Git
+- Python 3.12+
+- uv
 
-## Setup
+## Local Setup
 
-Install project dependencies:
+Install dependencies:
 
-```powershell
-uv sync --locked
-```
+uv sync
 
-## Run locally
+Run the API:
 
-```powershell
-uv run uvicorn python_api_starter.main:app --reload --app-dir src
-```
+uv run uvicorn netsol.app:app \
+    --reload --app-dir src
 
-Health endpoint: http://127.0.0.1:8000/health
+## Docker Setup
 
-Interactive API documentation: http://127.0.0.1:8000/docs
+Build and start:
 
-## Run with Docker Compose
-
-```powershell
 docker compose up --build
-```
 
-Health endpoint: http://127.0.0.1:8000/health
+Stop:
 
-Stop the containers with:
-
-```powershell
 docker compose down
-```
 
-## Configuration
+## Endpoints
 
-See `.env.example` for the example application configuration.
-
-## Project layout
-
-- `src/python_api_starter/main.py`: FastAPI application and health endpoint
-- `pyproject.toml`: project metadata and dependencies
-- `uv.lock`: locked dependency versions
-- `Dockerfile`: container image instructions
-- `compose.yaml`: Docker Compose configuration
-- `.gitignore`: excludes generated files and local secrets
-- `.env.example`: example configuration
-
-## Health endpoint
-
-`GET /health` returns HTTP 200 with JSON containing the service status and version.
+GET /health
