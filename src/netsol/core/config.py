@@ -11,6 +11,11 @@ class Settings(BaseSettings):
     llm_max_input_chars: int = Field(default=4000, gt=0)
     llm_max_output_tokens: int = Field(default=300, gt=0)
 
+    database_url: str = Field(
+    min_length=1,
+    validation_alias="DATABASE_URL",
+        )
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
