@@ -17,7 +17,7 @@ client = TestClient(app)
 def test_chat_success():
     fake_result = LLMResult(
         answer="Hello! How can I help?",
-        model="gemini-2.5-flash",
+        model="gemini-3.5-flash-lite",
         input_tokens=5,
         output_tokens=7,
     )
@@ -35,7 +35,7 @@ def test_chat_success():
     assert response.status_code == 200
     data = response.json()
     assert data["answer"] == "Hello! How can I help?"
-    assert data["model"] == "gemini-2.5-flash"
+    assert data["model"] == "gemini-3.5-flash-lite"
     assert data["usage"]["input_tokens"] == 5
     assert data["usage"]["output_tokens"] == 7
 
