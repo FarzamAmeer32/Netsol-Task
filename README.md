@@ -1,110 +1,159 @@
-# Netsol API — Task 04: Application Architecture
+# Netsol API
 
-A modular FastAPI backend that separates API routes, request schemas, application configuration, error handling, and LLM service logic.
-
-This task refactors the Task 03 chatbot into a maintainable architecture while preserving the health check and in-memory messages API.
+A backend API built with **FastAPI**, **Python**, and **PostgreSQL**. The project provides API endpoints for health monitoring, message management, and LLM-powered chat, with asynchronous database integration using SQLAlchemy 2.x.
 
 ## Features
 
-- **Health check:** Verify that the API is responding.
-- **Messages API:** Create, list, retrieve, update, and delete messages using in-memory storage.
-- **Chat API:** Generate AI responses through the Gemini provider.
-- **Dependency injection:** Keep the chat endpoint independent of the concrete LLM implementation.
-- **Configuration management:** Load and validate environment-based settings.
-- **Standardized error responses:** Return consistent JSON error structures.
-- **Request IDs:** Accept valid `X-Request-ID` headers or generate IDs for request tracing.
-- **Automated tests:** Test routes and error handling without making real Gemini API calls.
+- FastAPI application with modular project structure.
+- PostgreSQL database integration.
+- Asynchronous SQLAlchemy 2.x sessions.
+- Database dependency injection.
+- Alembic database migrations.
+- User model with unique email constraint.
+- Health and database readiness endpoints.
+- Message CRUD operations.
+- Gemini-powered chat integration.
+- Automated tests using pytest.
+- Docker Compose configuration for local development.
+
+## Tech Stack
+
+| Technology | Purpose |
+|---|---|
+| Python | Backend programming |
+| FastAPI | API framework |
+| PostgreSQL | Relational database |
+| SQLAlchemy 2.x | ORM and async database access |
+| Alembic | Database migrations |
+| Pydantic Settings | Environment configuration |
+| Gemini API | LLM integration |
+| pytest | Automated testing |
+| Docker Compose | Local services |
 
 ## Project Structure
 
 ```text
-.
+Netsol/
+│
+├── alembic/
+│   └── versions/
+│
 ├── src/
 │   └── netsol/
-│       ├── __init__.py
-│       ├── app.py
 │       ├── api/
 │       │   ├── dependencies.py
 │       │   └── v1/
-│       │       ├── router.py
 │       │       ├── health.py
-│       │       ├── messages.py
-│       │       └── chat.py
+│       │       └── ...
+│       │
 │       ├── core/
 │       │   ├── config.py
 │       │   └── exceptions.py
-│       ├── schemas/
-│       │   └── chat.py
-│       └── services/
-│           └── llm.py
-├── tests/
-│   ├── test_messages.py
-│   └── test_chat.py
+│       │
+│       ├── db/
+│       │   ├── base.py
+│       │   ├── session.py
+│       │   └── models/
+│       │       └── user.py
+│       │
+│       ├── app.py
+│       └── ...
+│
+├── test/
+│   ├── test_health.py
+│   ├── test_db_session.py
+│   ├── test_user_model.py
+│   └── test_transactions.py
+│
 ├── .env.example
 ├── .gitignore
+├── alembic.ini
+├── docker-compose.yml
+├── Dockerfile
 ├── pyproject.toml
-├── uv.lock
 └── README.md
 ```
 
-The structure above describes the intended layout. Keep any additional files already required by your project.
+## Prerequisites
 
-## Architecture and Responsibilities
-
-| Component | Responsibility |
-|---|---|
-| `app.py` | Creates the FastAPI application, configures lifespan, middleware, and exception handlers, and registers routers. |
-| `api/v1/router.py` | Combines the versioned messages and chat routers. |
-| `api/v1/health.py` | Provides the health-check endpoint. |
-| `api/v1/messages.py` | Implements message CRUD operations using in-memory storage. |
-| `api/v1/chat.py` | Validates chat requests and invokes the injected LLM service. |
-| `api/dependencies.py` | Provides the LLM service through FastAPI dependency injection. |
-| `schemas/chat.py` | Defines chat request, response, usage, and error models. |
-| `services/llm.py` | Defines the LLM service interface and Gemini implementation. |
-| `core/config.py` | Loads and validates environment-based settings. |
-| `core/exceptions.py` | Defines application-specific LLM exceptions. |
-| `tests/` | Contains automated tests for API behavior and error handling. |
-
-## Setup
-
-### Requirements
+Make sure you have:
 
 - Python 3.12 or later
-- `uv`
-- A Gemini API key for live chat requests
+- [uv](https://docs.astral.sh/uv/)
+- PostgreSQL 16 (or Docker Desktop with Docker Compose)
+- A Gemini API key for LLM-powered chat
 
-### 1. Install dependencies
+## Installation
 
-From the project root:
+### 1. Clone the repository
+
+```bash
+git clone <repository-url>
+cd Netsol
+```
+
+### 2. Install dependencies
 
 ```bash
 uv sync
 ```
 
-If the test dependencies have not yet been added:
-
-```bash
-uv add --dev pytest httpx
-```
-
-### 2. Configure environment variables
+### 3. Configure environment variables
 
 Create a `.env` file in the project root using `.env.example` as a template.
 
 Example:
 
-```dotenv
-GEMINI_API_KEY=your_gemini_api_key
+```env
+APP_NAME=Netsol API
+APP_VERSION=0.5.0
+
+GEMINI_API_KEY=your-gemini-api-key
 LLM_MODEL=gemini-2.5-flash
 LLM_TIMEOUT_SECONDS=30
+LLM_MAX_INPUT_CHARS=4000
 LLM_MAX_OUTPUT_TOKENS=300
+
+POSTGRES_DB=chatbot
+POSTGRES_USER=chatbot_user
+POSTGRES_PASSWORD=your-local-password
+
+DATABASE_URL=postgresql+asyncpg://chatbot_user:your-local-password@localhost:5432/chatbot
 ```
 
-Use your actual API key in your local `.env` file. Do not commit `.env` or expose API keys in source code, logs, or screenshots.
+Use your actual local database credentials. Never commit your `.env` file or API keys.
 
-The settings names must match those defined in `core/config.py`.
+## Database Setup
 
-### 3. Run the application
+### Option 1: Using Docker Compose
+
+Start the database service:
+
+```bash
+docker compose up -d db
+```
+
+### Option 2: Using a local PostgreSQL installation
+
+Create a PostgreSQL database and configure the connection string in your `.env` file.
+
+### Run database migrations
+
+After starting PostgreSQL, apply migrations:
+
+```bash
+uv run alembic upgrade head
+```
+
+Check the current migration:
+
+```bash
+uv run alembic current
+```
+
+## Run the Application
+
+Start the development server:
 
 ```bash
 uv run uvicorn netsol.app:app --reload --app-dir src
@@ -112,152 +161,101 @@ uv run uvicorn netsol.app:app --reload --app-dir src
 
 The API will be available at:
 
-- Base URL: `http://127.0.0.1:8000`
-- Swagger UI: `http://127.0.0.1:8000/docs`
-- ReDoc: `http://127.0.0.1:8000/redoc`
+```text
+http://127.0.0.1:8000
+```
+
+### API Documentation
+
+FastAPI automatically provides interactive API documentation:
+
+- Swagger UI: http://127.0.0.1:8000/docs
+- ReDoc: http://127.0.0.1:8000/redoc
 
 ## API Endpoints
 
-### Health
-
 | Method | Endpoint | Description |
 |---|---|---|
-| GET | `/health` | Returns the API health status |
-| GET | `/` | Returns basic service information |
-
-Example response from `GET /health`:
-
-```json
-{
-  "status": "ok"
-}
-```
-
-### Messages
-
-| Method | Endpoint | Description |
-|---|---|---|
+| GET | `/health` | Check API health |
+| GET | `/health/ready` | Check database readiness |
 | POST | `/api/v1/messages` | Create a message |
 | GET | `/api/v1/messages` | List messages |
-| GET | `/api/v1/messages/{message_id}` | Retrieve a message |
-| PATCH | `/api/v1/messages/{message_id}` | Update message content |
-| DELETE | `/api/v1/messages/{message_id}` | Delete a message |
+| GET | `/api/v1/messages/{id}` | Retrieve a message |
+| PUT | `/api/v1/messages/{id}` | Update a message |
+| DELETE | `/api/v1/messages/{id}` | Delete a message |
+| POST | `/api/v1/chat` | Generate an LLM-powered response |
 
-Create a message:
+*Refer to Swagger UI for the exact request and response schemas.*
 
-```http
-POST /api/v1/messages
-Content-Type: application/json
-```
+## Testing
 
-```json
-{
-  "role": "user",
-  "content": "Hello"
-}
-```
-
-The messages API uses temporary in-memory storage. Messages are lost when the application restarts. No database is introduced in this task.
-
-### Chat
-
-| Method | Endpoint | Description |
-|---|---|---|
-| POST | `/api/v1/chat` | Generate an AI response |
-
-Example request:
-
-```http
-POST /api/v1/chat
-Content-Type: application/json
-X-Request-ID: chat-test-123
-```
-
-```json
-{
-  "message": "Explain REST APIs in simple words."
-}
-```
-
-Example success response:
-
-```json
-{
-  "answer": "A REST API allows applications to communicate using HTTP.",
-  "model": "gemini-2.5-flash",
-  "usage": {
-    "input_tokens": 10,
-    "output_tokens": 15
-  }
-}
-```
-
-The answer and token usage depend on the actual provider response.
-
-## Error Handling
-
-The application maps known exceptions to safe, consistent error responses.
-
-| HTTP status | Error code | Meaning |
-|---|---|---|
-| 404 | `not_found` | The requested message does not exist. |
-| 422 | `validation_error` | The request data is invalid. |
-| 429 | `llm_rate_limited` | The LLM provider is rate-limiting requests. |
-| 503 | `llm_unavailable` | The LLM provider is unavailable. |
-| 503 | `llm_configuration_error` | The LLM provider configuration is invalid. |
-
-Example error response:
-
-```json
-{
-  "error": {
-    "code": "llm_unavailable",
-    "message": "The chatbot service is temporarily unavailable.",
-    "request_id": "chat-test-123"
-  }
-}
-```
-
-The `X-Request-ID` response header allows a request to be correlated with server-side logs. Unexpected errors should be logged internally without exposing sensitive details to API clients.
-
-## Dependency Injection and Testing
-
-The chat endpoint depends on the `LLMService` interface rather than directly creating a Gemini client inside the route.
-
-FastAPI dependency injection provides the service. Tests can replace that dependency using `app.dependency_overrides` and supply a fake implementation.
-
-This allows tests to verify:
-
-- Successful chat responses.
-- Request validation.
-- LLM provider failures.
-- Rate-limit and configuration errors.
-- Request ID behavior.
-
-The tests do not need a real Gemini API call when the LLM dependency is overridden.
-
-Run the test suite:
+Run the complete test suite:
 
 ```bash
 uv run pytest -v
 ```
 
-Run individual test files:
+The tests cover:
+
+- API health checks.
+- Database readiness.
+- Database session cleanup.
+- User email uniqueness.
+- Transaction rollback.
+- Other application functionality.
+
+**Latest test result:** 27 passed.
+
+## Docker
+
+Build and start the application services:
 
 ```bash
-uv run pytest tests/test_messages.py -v
-uv run pytest tests/test_chat.py -v
+docker compose up --build
 ```
 
-## Scope of Task 04
+Stop the services:
 
-This task focuses on application architecture and maintainability.
+```bash
+docker compose down
+```
 
-It does not introduce:
+Stop services and remove the database volume:
 
-- PostgreSQL or another database.
-- Authentication or authorization.
-- LangChain or LangGraph.
-- New chatbot functionality beyond the existing LLM integration.
+```bash
+docker compose down -v
+```
 
-The goal is to make the existing API easier to maintain, test, and extend in later tasks.
+**Warning:** The last command deletes the persisted PostgreSQL database data.
+
+## Database Migrations
+
+Generate a new migration:
+
+```bash
+uv run alembic revision --autogenerate -m "describe your changes"
+```
+
+Apply migrations:
+
+```bash
+uv run alembic upgrade head
+```
+
+Roll back one migration:
+
+```bash
+uv run alembic downgrade -1
+```
+
+## Development Notes
+
+- Database operations use asynchronous SQLAlchemy sessions.
+- Database sessions are provided through FastAPI dependency injection.
+- Alembic manages database schema changes.
+- Sensitive configuration is loaded through environment variables.
+- Automated tests use pytest and database mocks where appropriate.
+
+## License
+
+This project is developed for educational and internship-related purposes.
