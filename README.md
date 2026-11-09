@@ -1,6 +1,6 @@
 # Netsol API
 
-A backend API built with **FastAPI**, **Python**, and **PostgreSQL**. The project provides API endpoints for health monitoring, message management, and LLM-powered chat, with asynchronous database integration using SQLAlchemy 2.x.
+A backend API built with **FastAPI, Python, and PostgreSQL**. The project provides health monitoring, message management, LLM-powered chat, and secure user registration, with asynchronous database integration using SQLAlchemy 2.x.
 
 ## Features
 
@@ -10,6 +10,10 @@ A backend API built with **FastAPI**, **Python**, and **PostgreSQL**. The projec
 - Database dependency injection.
 - Alembic database migrations.
 - User model with unique email constraint.
+- Secure user registration with email and password validation.
+- Argon2id password hashing.
+- Duplicate email detection and conflict handling.
+- Safe database error responses.
 - Health and database readiness endpoints.
 - Message CRUD operations.
 - Gemini-powered chat integration.
@@ -26,6 +30,8 @@ A backend API built with **FastAPI**, **Python**, and **PostgreSQL**. The projec
 | SQLAlchemy 2.x | ORM and async database access |
 | Alembic | Database migrations |
 | Pydantic Settings | Environment configuration |
+| pwdlib with Argon2 | Password hashing |
+| email-validator | Email validation |
 | Gemini API | LLM integration |
 | pytest | Automated testing |
 | Docker Compose | Local services |
@@ -43,12 +49,14 @@ Netsol/
 │       ├── api/
 │       │   ├── dependencies.py
 │       │   └── v1/
+│       │       ├── auth.py
 │       │       ├── health.py
 │       │       └── ...
 │       │
 │       ├── core/
 │       │   ├── config.py
-│       │   └── exceptions.py
+│       │   ├── exceptions.py
+│       │   └── security.py
 │       │
 │       ├── db/
 │       │   ├── base.py
@@ -56,10 +64,21 @@ Netsol/
 │       │   └── models/
 │       │       └── user.py
 │       │
+│       ├── repositories/
+│       │   └── user.py
+│       │
+│       ├── schemas/
+│       │   └── user.py
+│       │
+│       ├── services/
+│       │   └── user.py
+│       │
 │       ├── app.py
 │       └── ...
 │
 ├── test/
+│   ├── conftest.py
+│   ├── test_auth.py
 │   ├── test_health.py
 │   ├── test_db_session.py
 │   ├── test_user_model.py
@@ -68,7 +87,7 @@ Netsol/
 ├── .env.example
 ├── .gitignore
 ├── alembic.ini
-├── docker-compose.yml
+├── compose.yaml
 ├── Dockerfile
 ├── pyproject.toml
 └── README.md
@@ -170,92 +189,4 @@ http://127.0.0.1:8000
 FastAPI automatically provides interactive API documentation:
 
 - Swagger UI: http://127.0.0.1:8000/docs
-- ReDoc: http://127.0.0.1:8000/redoc
-
-## API Endpoints
-
-| Method | Endpoint | Description |
-|---|---|---|
-| GET | `/health` | Check API health |
-| GET | `/health/ready` | Check database readiness |
-| POST | `/api/v1/messages` | Create a message |
-| GET | `/api/v1/messages` | List messages |
-| GET | `/api/v1/messages/{id}` | Retrieve a message |
-| PUT | `/api/v1/messages/{id}` | Update a message |
-| DELETE | `/api/v1/messages/{id}` | Delete a message |
-| POST | `/api/v1/chat` | Generate an LLM-powered response |
-
-*Refer to Swagger UI for the exact request and response schemas.*
-
-## Testing
-
-Run the complete test suite:
-
-```bash
-uv run pytest -v
-```
-
-The tests cover:
-
-- API health checks.
-- Database readiness.
-- Database session cleanup.
-- User email uniqueness.
-- Transaction rollback.
-- Other application functionality.
-
-**Latest test result:** 27 passed.
-
-## Docker
-
-Build and start the application services:
-
-```bash
-docker compose up --build
-```
-
-Stop the services:
-
-```bash
-docker compose down
-```
-
-Stop services and remove the database volume:
-
-```bash
-docker compose down -v
-```
-
-**Warning:** The last command deletes the persisted PostgreSQL database data.
-
-## Database Migrations
-
-Generate a new migration:
-
-```bash
-uv run alembic revision --autogenerate -m "describe your changes"
-```
-
-Apply migrations:
-
-```bash
-uv run alembic upgrade head
-```
-
-Roll back one migration:
-
-```bash
-uv run alembic downgrade -1
-```
-
-## Development Notes
-
-- Database operations use asynchronous SQLAlchemy sessions.
-- Database sessions are provided through FastAPI dependency injection.
-- Alembic manages database schema changes.
-- Sensitive configuration is loaded through environment variables.
-- Automated tests use pytest and database mocks where appropriate.
-
-## License
-
-This project is developed for educational and internship-related purposes.
+- ReDoc
