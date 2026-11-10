@@ -1,113 +1,109 @@
 # Netsol API
 
-A backend API built with **FastAPI, Python, and PostgreSQL**. The project provides health monitoring, message management, LLM-powered chat, and secure user registration, with asynchronous database integration using SQLAlchemy 2.x.
+A backend API built with **FastAPI**, **PostgreSQL**, and **SQLAlchemy**. The project follows a modular architecture and includes user registration, secure authentication, protected routes, database migrations, and LLM-powered chat functionality.
 
 ## Features
 
-- FastAPI application with modular project structure.
-- PostgreSQL database integration.
-- Asynchronous SQLAlchemy 2.x sessions.
-- Database dependency injection.
-- Alembic database migrations.
-- User model with unique email constraint.
-- Secure user registration with email and password validation.
-- Argon2id password hashing.
-- Duplicate email detection and conflict handling.
-- Safe database error responses.
-- Health and database readiness endpoints.
-- Message CRUD operations.
-- Gemini-powered chat integration.
+- **FastAPI** REST API with versioned endpoints.
+- **User registration** with email normalization and password validation.
+- **Secure password hashing** using Argon2.
+- **JWT authentication** using PyJWT.
+- **Protected endpoints** using FastAPI dependency injection.
+- **PostgreSQL** database integration.
+- **SQLAlchemy 2.x** asynchronous database operations.
+- **Alembic** database migrations.
+- **LLM integration** using the Google Gemini SDK.
+- Centralized exception handling and consistent API error responses.
+- Request ID middleware for request tracking.
 - Automated tests using pytest.
-- Docker Compose configuration for local development.
+- Docker and Docker Compose configuration.
 
 ## Tech Stack
 
 | Technology | Purpose |
 |---|---|
-| Python | Backend programming |
-| FastAPI | API framework |
+| Python | Backend programming language |
+| FastAPI | REST API framework |
 | PostgreSQL | Relational database |
-| SQLAlchemy 2.x | ORM and async database access |
+| SQLAlchemy 2.x | Async ORM |
 | Alembic | Database migrations |
-| Pydantic Settings | Environment configuration |
-| pwdlib with Argon2 | Password hashing |
-| email-validator | Email validation |
-| Gemini API | LLM integration |
+| Pydantic | Data validation and settings |
+| PyJWT | JWT token generation and verification |
+| pwdlib / Argon2 | Password hashing |
+| Google Gemini SDK | LLM integration |
 | pytest | Automated testing |
-| Docker Compose | Local services |
+| uv | Python dependency management |
+| Docker | Containerization |
 
 ## Project Structure
 
 ```text
 Netsol/
 │
-├── alembic/
-│   └── versions/
-│
 ├── src/
 │   └── netsol/
+│       ├── app.py
+│       │
 │       ├── api/
 │       │   ├── dependencies.py
 │       │   └── v1/
+│       │       ├── router.py
 │       │       ├── auth.py
-│       │       ├── health.py
-│       │       └── ...
+│       │       ├── users.py
+│       │       └── chat.py
 │       │
 │       ├── core/
 │       │   ├── config.py
-│       │   ├── exceptions.py
-│       │   └── security.py
+│       │   ├── security.py
+│       │   └── exceptions.py
 │       │
 │       ├── db/
 │       │   ├── base.py
-│       │   ├── session.py
-│       │   └── models/
-│       │       └── user.py
+│       │   └── session.py
 │       │
 │       ├── repositories/
 │       │   └── user.py
 │       │
 │       ├── schemas/
-│       │   └── user.py
+│       │   ├── auth.py
+│       │   ├── user.py
+│       │   └── chat.py
 │       │
-│       ├── services/
-│       │   └── user.py
-│       │
-│       ├── app.py
-│       └── ...
+│       └── services/
+│           ├── auth.py
+│           ├── user.py
+│           └── llm.py
+│
+├── alembic/
+│   └── versions/
 │
 ├── test/
 │   ├── conftest.py
 │   ├── test_auth.py
-│   ├── test_health.py
-│   ├── test_db_session.py
-│   ├── test_user_model.py
-│   └── test_transactions.py
+│   └── ...
 │
-├── .env.example
-├── .gitignore
 ├── alembic.ini
-├── compose.yaml
+├── docker-compose.yml
 ├── Dockerfile
 ├── pyproject.toml
+├── uv.lock
+├── .env.example
 └── README.md
 ```
 
-## Prerequisites
+## Getting Started
 
-Make sure you have:
+### Prerequisites
 
-- Python 3.12 or later
-- [uv](https://docs.astral.sh/uv/)
-- PostgreSQL 16 (or Docker Desktop with Docker Compose)
-- A Gemini API key for LLM-powered chat
-
-## Installation
+- Python 3.12+
+- PostgreSQL
+- uv
+- Google Gemini API key
 
 ### 1. Clone the repository
 
 ```bash
-git clone <repository-url>
+git clone <your-repository-url>
 cd Netsol
 ```
 
@@ -119,60 +115,37 @@ uv sync
 
 ### 3. Configure environment variables
 
-Create a `.env` file in the project root using `.env.example` as a template.
-
-Example:
+Create a `.env` file in the project root.
 
 ```env
-APP_NAME=Netsol API
-APP_VERSION=0.5.0
-
 GEMINI_API_KEY=your-gemini-api-key
-LLM_MODEL=gemini-2.5-flash
-LLM_TIMEOUT_SECONDS=30
-LLM_MAX_INPUT_CHARS=4000
-LLM_MAX_OUTPUT_TOKENS=300
 
-POSTGRES_DB=chatbot
-POSTGRES_USER=chatbot_user
-POSTGRES_PASSWORD=your-local-password
+DATABASE_URL=postgresql+asyncpg://postgres:password@localhost:5432/netsol
 
-DATABASE_URL=postgresql+asyncpg://chatbot_user:your-local-password@localhost:5432/chatbot
+JWT_SECRET_KEY=your-generated-secret-key
+JWT_ALGORITHM=HS256
+ACCESS_TOKEN_EXPIRE_MINUTES=15
 ```
 
-Use your actual local database credentials. Never commit your `.env` file or API keys.
-
-## Database Setup
-
-### Option 1: Using Docker Compose
-
-Start the database service:
+Generate a strong JWT secret:
 
 ```bash
-docker compose up -d db
+python -c "import secrets; print(secrets.token_hex(32))"
 ```
 
-### Option 2: Using a local PostgreSQL installation
+Never commit your actual `.env` file or expose your API keys and JWT secret.
 
-Create a PostgreSQL database and configure the connection string in your `.env` file.
+### 4. Set up the database
 
-### Run database migrations
+Create a PostgreSQL database named `netsol`.
 
-After starting PostgreSQL, apply migrations:
+Run database migrations:
 
 ```bash
 uv run alembic upgrade head
 ```
 
-Check the current migration:
-
-```bash
-uv run alembic current
-```
-
-## Run the Application
-
-Start the development server:
+### 5. Start the application
 
 ```bash
 uv run uvicorn netsol.app:app --reload --app-dir src
@@ -180,13 +153,162 @@ uv run uvicorn netsol.app:app --reload --app-dir src
 
 The API will be available at:
 
-```text
-http://127.0.0.1:8000
+`http://127.0.0.1:8000`
+
+Interactive API documentation:
+
+`http://127.0.0.1:8000/docs`
+
+## API Endpoints
+
+All versioned endpoints use the `/api/v1` prefix.
+
+### Health
+
+| Method | Endpoint | Description |
+|---|---|---|
+| GET | `/health` | Check API health |
+
+### Authentication
+
+| Method | Endpoint | Description |
+|---|---|---|
+| POST | `/api/v1/auth/register` | Register a new user |
+| POST | `/api/v1/auth/login` | Authenticate and receive a JWT |
+
+### Users
+
+| Method | Endpoint | Description |
+|---|---|---|
+| GET | `/api/v1/users/me` | Retrieve the authenticated user's profile |
+
+### Messages and Chat
+
+| Method | Endpoint | Description |
+|---|---|---|
+| GET | `/api/v1/messages` | List messages |
+| POST | `/api/v1/messages` | Create a message |
+| GET | `/api/v1/messages/{message_id}` | Retrieve a message |
+| PUT | `/api/v1/messages/{message_id}` | Update a message |
+| DELETE | `/api/v1/messages/{message_id}` | Delete a message |
+| POST | `/api/v1/chat` | Generate an LLM-powered response |
+
+Refer to Swagger UI at `/docs` for the exact request and response schemas.
+
+## JWT Authentication
+
+The application uses JSON Web Tokens for stateless access authentication.
+
+### Login Flow
+
+1. The user submits their email and password.
+2. The email is normalized.
+3. The user is retrieved from PostgreSQL.
+4. The submitted password is verified against the stored Argon2 hash.
+5. Inactive users and invalid credentials are rejected.
+6. A signed JWT access token is generated.
+
+Example successful login response:
+
+```json
+{
+  "access_token": "your-jwt-access-token",
+  "token_type": "bearer",
+  "expires_in": 900
+}
 ```
 
-### API Documentation
+The access token contains:
 
-FastAPI automatically provides interactive API documentation:
+- `sub`: User UUID.
+- `iat`: Token issued-at timestamp.
+- `exp`: Token expiration timestamp.
+- `type`: Token type (`access`).
 
-- Swagger UI: http://127.0.0.1:8000/docs
-- ReDoc
+The default access-token lifetime is 15 minutes and can be configured through environment variables.
+
+### Protected Routes
+
+Protected endpoints use the `get_current_user` dependency.
+
+For example:
+
+```http
+GET /api/v1/users/me
+Authorization: Bearer <access_token>
+```
+
+The dependency verifies the token signature, expiration, claims, and token type, then retrieves the corresponding user from the database.
+
+It also rejects missing, invalid, expired, or tampered tokens, as well as deleted or inactive users.
+
+The API returns a consistent `401 Unauthorized` response for authentication failures.
+
+## Database Migrations
+
+Alembic manages database schema changes.
+
+Apply migrations:
+
+```bash
+uv run alembic upgrade head
+```
+
+Generate a new migration:
+
+```bash
+uv run alembic revision --autogenerate -m "migration_description"
+```
+
+Rollback one migration:
+
+```bash
+uv run alembic downgrade -1
+```
+
+## Running Tests
+
+Run the complete test suite:
+
+```bash
+uv run pytest -q
+```
+
+Run authentication tests:
+
+```bash
+uv run pytest test/test_auth.py -q
+```
+
+**Important:** Tests use a dedicated `netsol_test` database. Configure `TEST_DATABASE_URL` if needed, and never point the test suite at your development or production database.
+
+The test suite covers registration, password security, login, JWT validation, protected routes, inactive and deleted users, and error handling.
+
+## Docker
+
+Build and start the services:
+
+```bash
+docker compose up --build
+```
+
+Stop the services:
+
+```bash
+docker compose down
+```
+
+## Security Considerations
+
+- Passwords are stored as Argon2 hashes, never as plaintext.
+- JWT secrets are supplied through environment variables.
+- Access tokens have a configurable expiration time.
+- Token signatures and expiration are verified before accessing protected resources.
+- The application checks the user's current database status on authenticated requests.
+- Unknown email addresses and incorrect passwords return the same generic login error.
+- A precomputed dummy password hash is used for unknown-user verification to reduce timing differences.
+- Sensitive credentials and tokens should never be logged or committed to version control.
+
+## License
+
+This project is intended for learning and backend development purposes.

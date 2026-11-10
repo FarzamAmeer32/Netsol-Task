@@ -1,4 +1,8 @@
+from datetime import datetime, timedelta, timezone
 
+import jwt
+
+from netsol.core.config import get_settings
 import asyncio
 import uuid
 from unittest.mock import AsyncMock, patch
@@ -285,3 +289,369 @@ async def test_concurrent_registration_allows_only_one_user(test_engine):
         saved_users = result.scalars().all()
 
     assert len(saved_users) == 1
+
+def test_login_success(auth_client):
+    email = f"Login-{uuid.uuid4()}@EXAMPLE.COM"
+    password = "MyStrongPass!2026"
+
+    # First register the user.
+    register_response = auth_client.post(
+        "/api/v1/auth/register",
+        json={"email": email, "password": password},
+    )
+
+    assert register_response.status_code == 201
+
+    # Now login.
+    response = auth_client.post(
+        "/api/v1/auth/login",
+        json={"email": email, "password": password},
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert data["access_token"]
+    assert data["token_type"] == "bearer"
+    assert data["expires_in"] == 900
+
+def test_login_returns_same_error_for_unknown_email_and_wrong_password(
+    auth_client,
+):
+    email = f"{uuid.uuid4()}@example.com"
+    password = "MyStrongPass!2026"
+
+    auth_client.post(
+        "/api/v1/auth/register",
+        json={"email": email, "password": password},
+    )
+
+    wrong_password_response = auth_client.post(
+        "/api/v1/auth/login",
+        json={
+            "email": email,
+            "password": "WrongPassword!2026",
+        },
+    )
+
+    unknown_email_response = auth_client.post(
+        "/api/v1/auth/login",
+        json={
+            "email": f"{uuid.uuid4()}@example.com",
+            "password": password,
+        },
+    )
+
+    assert wrong_password_response.status_code == 401
+    assert unknown_email_response.status_code == 401
+
+    wrong_error = wrong_password_response.json()["error"]
+    unknown_error = unknown_email_response.json()["error"]
+
+    assert wrong_error["code"] == unknown_error["code"]
+    assert wrong_error["message"] == unknown_error["message"]
+
+    assert wrong_error["code"] == "invalid_credentials"
+    assert wrong_error["message"] == "Email or password is incorrect."
+
+    assert (
+        wrong_password_response.headers["WWW-Authenticate"]
+        == "Bearer"
+    )
+
+def test_login_rejects_inactive_user(auth_client, test_engine):
+    email = f"{uuid.uuid4()}@example.com"
+    password = "MyStrongPass!2026"
+
+    auth_client.post(
+        "/api/v1/auth/register",
+        json={"email": email, "password": password},
+    )
+
+    async def deactivate_user():
+        async with AsyncSession(
+            test_engine,
+            expire_on_commit=False,
+        ) as db:
+            result = await db.execute(
+                select(User).where(User.email == email)
+            )
+            user = result.scalar_one()
+            user.is_active = False
+            await db.commit()
+
+    asyncio.run(deactivate_user())
+
+    response = auth_client.post(
+        "/api/v1/auth/login",
+        json={"email": email, "password": password},
+    )
+
+    assert response.status_code == 401
+    assert response.json()["error"]["code"] == "invalid_credentials"
+    assert response.headers["WWW-Authenticate"] == "Bearer"
+
+def test_get_current_user_success(auth_client):
+    email = f"{uuid.uuid4()}@example.com"
+    password = "MyStrongPass!2026"
+
+    auth_client.post(
+        "/api/v1/auth/register",
+        json={"email": email, "password": password},
+    )
+
+    login_response = auth_client.post(
+        "/api/v1/auth/login",
+        json={"email": email, "password": password},
+    )
+
+    token = login_response.json()["access_token"]
+
+    response = auth_client.get(
+        "/api/v1/users/me",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["email"] == email.lower()
+    assert response.json()["is_active"] is True
+
+    assert "password" not in response.json()
+    assert "password_hash" not in response.json()
+
+def test_get_current_user_rejects_missing_token(auth_client):
+    response = auth_client.get("/api/v1/users/me")
+
+    assert response.status_code == 401
+    assert response.headers["WWW-Authenticate"] == "Bearer"
+
+
+def test_get_current_user_rejects_malformed_token(auth_client):
+    response = auth_client.get(
+        "/api/v1/users/me",
+        headers={"Authorization": "Bearer invalid.token.value"},
+    )
+
+    assert response.status_code == 401
+    assert response.headers["WWW-Authenticate"] == "Bearer"
+
+
+def test_get_current_user_rejects_wrong_scheme(auth_client):
+    response = auth_client.get(
+        "/api/v1/users/me",
+        headers={"Authorization": "Basic somecredentials"},
+    )
+
+    assert response.status_code == 401
+    assert response.headers["WWW-Authenticate"] == "Bearer"
+
+def test_get_current_user_rejects_expired_token(auth_client):
+    settings = get_settings()
+
+    now = datetime.now(timezone.utc)
+
+    expired_token = jwt.encode(
+        {
+            "sub": str(uuid.uuid4()),
+            "iat": now - timedelta(minutes=30),
+            "exp": now - timedelta(minutes=15),
+            "type": "access",
+        },
+        settings.jwt_secret_key,
+        algorithm=settings.jwt_algorithm,
+    )
+
+    response = auth_client.get(
+        "/api/v1/users/me",
+        headers={
+            "Authorization": f"Bearer {expired_token}"
+        },
+    )
+
+    assert response.status_code == 401
+    assert response.headers["WWW-Authenticate"] == "Bearer"
+
+def test_get_current_user_rejects_tampered_token(auth_client):
+    email = f"{uuid.uuid4()}@example.com"
+    password = "MyStrongPass!2026"
+
+    auth_client.post(
+        "/api/v1/auth/register",
+        json={"email": email, "password": password},
+    )
+
+    login_response = auth_client.post(
+        "/api/v1/auth/login",
+        json={"email": email, "password": password},
+    )
+
+    token = login_response.json()["access_token"]
+
+    # JWT contains three parts separated by dots.
+    header, payload, signature = token.split(".")
+
+    # Change the signature.
+    changed_signature = (
+        ("A" if signature[0] != "A" else "B")
+        + signature[1:]
+    )
+
+    tampered_token = f"{header}.{payload}.{changed_signature}"
+
+    response = auth_client.get(
+        "/api/v1/users/me",
+        headers={
+            "Authorization": f"Bearer {tampered_token}"
+        },
+    )
+
+    assert response.status_code == 401
+    assert response.headers["WWW-Authenticate"] == "Bearer"
+
+def test_get_current_user_rejects_wrong_token_type(auth_client):
+    settings = get_settings()
+    now = datetime.now(timezone.utc)
+
+    wrong_type_token = jwt.encode(
+        {
+            "sub": str(uuid.uuid4()),
+            "iat": now,
+            "exp": now + timedelta(minutes=15),
+            "type": "refresh",
+        },
+        settings.jwt_secret_key,
+        algorithm=settings.jwt_algorithm,
+    )
+
+    response = auth_client.get(
+        "/api/v1/users/me",
+        headers={
+            "Authorization": f"Bearer {wrong_type_token}"
+        },
+    )
+
+    assert response.status_code == 401
+    assert response.headers["WWW-Authenticate"] == "Bearer"
+
+def test_get_current_user_rejects_deleted_user(auth_client, test_engine):
+    email = f"{uuid.uuid4()}@example.com"
+    password = "MyStrongPass!2026"
+
+    auth_client.post(
+        "/api/v1/auth/register",
+        json={"email": email, "password": password},
+    )
+
+    login_response = auth_client.post(
+        "/api/v1/auth/login",
+        json={"email": email, "password": password},
+    )
+
+    token = login_response.json()["access_token"]
+
+    async def delete_user():
+        async with AsyncSession(
+            test_engine,
+            expire_on_commit=False,
+        ) as db:
+            result = await db.execute(
+                select(User).where(User.email == email)
+            )
+            user = result.scalar_one()
+            await db.delete(user)
+            await db.commit()
+
+    asyncio.run(delete_user())
+
+    response = auth_client.get(
+        "/api/v1/users/me",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 401
+    assert response.headers["WWW-Authenticate"] == "Bearer"
+
+def test_get_current_user_rejects_inactive_user(auth_client, test_engine):
+    email = f"{uuid.uuid4()}@example.com"
+    password = "MyStrongPass!2026"
+
+    auth_client.post(
+        "/api/v1/auth/register",
+        json={"email": email, "password": password},
+    )
+
+    login_response = auth_client.post(
+        "/api/v1/auth/login",
+        json={"email": email, "password": password},
+    )
+
+    token = login_response.json()["access_token"]
+
+    async def deactivate_user():
+        async with AsyncSession(
+            test_engine,
+            expire_on_commit=False,
+        ) as db:
+            result = await db.execute(
+                select(User).where(User.email == email)
+            )
+            user = result.scalar_one()
+            user.is_active = False
+            await db.commit()
+
+    asyncio.run(deactivate_user())
+
+    response = auth_client.get(
+        "/api/v1/users/me",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 401
+    assert response.headers["WWW-Authenticate"] == "Bearer"
+
+def test_get_current_user_rejects_invalid_subject(auth_client):
+    settings = get_settings()
+    now = datetime.now(timezone.utc)
+
+    token = jwt.encode(
+        {
+            "sub": "not-a-valid-uuid",
+            "iat": now,
+            "exp": now + timedelta(minutes=15),
+            "type": "access",
+        },
+        settings.jwt_secret_key,
+        algorithm=settings.jwt_algorithm,
+    )
+
+    response = auth_client.get(
+        "/api/v1/users/me",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 401
+    assert response.headers["WWW-Authenticate"] == "Bearer"
+
+
+def test_get_current_user_rejects_missing_subject(auth_client):
+    settings = get_settings()
+    now = datetime.now(timezone.utc)
+
+    token = jwt.encode(
+        {
+            "iat": now,
+            "exp": now + timedelta(minutes=15),
+            "type": "access",
+        },
+        settings.jwt_secret_key,
+        algorithm=settings.jwt_algorithm,
+    )
+
+    response = auth_client.get(
+        "/api/v1/users/me",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 401
+    assert response.headers["WWW-Authenticate"] == "Bearer"

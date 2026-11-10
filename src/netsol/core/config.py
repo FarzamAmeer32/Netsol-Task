@@ -1,3 +1,4 @@
+
 from functools import lru_cache
 
 from pydantic import Field
@@ -6,15 +7,20 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     gemini_api_key: str = Field(min_length=1)
-    llm_model: str = "gemini-2.5-flash"
+    llm_model: str = "gemini-3.5-flash"
     llm_timeout_seconds: float = Field(default=30, gt=0)
     llm_max_input_chars: int = Field(default=4000, gt=0)
     llm_max_output_tokens: int = Field(default=300, gt=0)
 
     database_url: str = Field(
-    min_length=1,
-    validation_alias="DATABASE_URL",
-        )
+        min_length=1,
+        validation_alias="DATABASE_URL",
+    )
+
+    # JWT configuration
+    jwt_secret_key: str = Field(min_length=32)
+    jwt_algorithm: str = "HS256"
+    access_token_expire_minutes: int = Field(default=15, gt=0)
 
     model_config = SettingsConfigDict(
         env_file=".env",

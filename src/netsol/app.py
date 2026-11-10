@@ -125,17 +125,26 @@ async def http_exception_handler(
 ):
     if isinstance(exc.detail, dict):
         code = exc.detail.get("code", "http_error")
-        message = exc.detail.get("message", "The request could not be completed.")
+        message = exc.detail.get(
+            "message",
+            "The request could not be completed.",
+        )
     else:
         code = "http_error"
         message = str(exc.detail)
 
-    return error_response(
+    response = error_response(
         request,
         exc.status_code,
         code,
         message,
     )
+
+    # Preserve additional headers, such as WWW-Authenticate.
+    if exc.headers:
+        response.headers.update(exc.headers)
+
+    return response
 
 
 @app.exception_handler(RequestValidationError)
