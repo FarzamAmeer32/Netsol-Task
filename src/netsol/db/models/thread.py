@@ -17,6 +17,11 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from netsol.db.models.user import User
+    from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from netsol.db.models.user import User
+    from netsol.db.models.message import ChatMessage
 
 
 class ChatThread(Base):
@@ -61,6 +66,12 @@ class ChatThread(Base):
 
     owner: Mapped["User"] = relationship(
         back_populates="threads",
+    )
+    
+    messages: Mapped[list["ChatMessage"]] = relationship(
+    back_populates="thread",
+    cascade="all, delete-orphan",
+    passive_deletes=True,
     )
 
     __table_args__ = (
