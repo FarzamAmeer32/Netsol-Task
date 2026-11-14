@@ -1,56 +1,56 @@
 # Netsol API
 
-A backend API built with **FastAPI**, **PostgreSQL**, and **SQLAlchemy**. The project follows a modular architecture and includes user registration, secure authentication, protected routes, database migrations, and LLM-powered chat functionality.
+A backend API built with **FastAPI**, **PostgreSQL**, and **SQLAlchemy**. The project provides authentication, user management, chat functionality, and user-owned chat thread management.
 
 ## Features
 
-- **FastAPI** REST API with versioned endpoints.
-- **User registration** with email normalization and password validation.
-- **Secure password hashing** using Argon2.
-- **JWT authentication** using PyJWT.
-- **Protected endpoints** using FastAPI dependency injection.
-- **PostgreSQL** database integration.
-- **SQLAlchemy 2.x** asynchronous database operations.
-- **Alembic** database migrations.
-- **LLM integration** using the Google Gemini SDK.
-- Centralized exception handling and consistent API error responses.
-- Request ID middleware for request tracking.
-- Automated tests using pytest.
-- Docker and Docker Compose configuration.
+- RESTful API built with FastAPI
+- User registration and login
+- JWT-based bearer authentication
+- Protected user endpoints
+- PostgreSQL database integration
+- Asynchronous SQLAlchemy 2.x
+- Database migrations using Alembic
+- Chat message management
+- User-owned chat threads
+- Thread archiving and restoration
+- Thread listing with filtering and pagination
+- Centralized exception handling
+- Request ID middleware
+- Automated testing with pytest
 
 ## Tech Stack
 
 | Technology | Purpose |
 |---|---|
-| Python | Backend programming language |
-| FastAPI | REST API framework |
+| Python 3.12+ | Programming language |
+| FastAPI | Backend framework |
 | PostgreSQL | Relational database |
-| SQLAlchemy 2.x | Async ORM |
+| SQLAlchemy 2.x | ORM |
 | Alembic | Database migrations |
-| Pydantic | Data validation and settings |
-| PyJWT | JWT token generation and verification |
-| pwdlib / Argon2 | Password hashing |
-| Google Gemini SDK | LLM integration |
+| Pydantic | Request and response validation |
+| JWT | Authentication |
+| uv | Dependency and project management |
 | pytest | Automated testing |
-| uv | Python dependency management |
-| Docker | Containerization |
 
 ## Project Structure
 
 ```text
 Netsol/
 │
+├── alembic/
+│   └── versions/
+│
 ├── src/
 │   └── netsol/
-│       ├── app.py
-│       │
 │       ├── api/
 │       │   ├── dependencies.py
 │       │   └── v1/
 │       │       ├── router.py
 │       │       ├── auth.py
 │       │       ├── users.py
-│       │       └── chat.py
+│       │       ├── messages.py
+│       │       └── threads.py
 │       │
 │       ├── core/
 │       │   ├── config.py
@@ -59,46 +59,23 @@ Netsol/
 │       │
 │       ├── db/
 │       │   ├── base.py
-│       │   └── session.py
+│       │   ├── session.py
+│       │   └── models/
 │       │
 │       ├── repositories/
-│       │   └── user.py
-│       │
 │       ├── schemas/
-│       │   ├── auth.py
-│       │   ├── user.py
-│       │   └── chat.py
-│       │
-│       └── services/
-│           ├── auth.py
-│           ├── user.py
-│           └── llm.py
-│
-├── alembic/
-│   └── versions/
+│       ├── services/
+│       └── app.py
 │
 ├── test/
-│   ├── conftest.py
-│   ├── test_auth.py
-│   └── ...
-│
+├── .env.example
 ├── alembic.ini
-├── docker-compose.yml
-├── Dockerfile
 ├── pyproject.toml
 ├── uv.lock
-├── .env.example
 └── README.md
 ```
 
 ## Getting Started
-
-### Prerequisites
-
-- Python 3.12+
-- PostgreSQL
-- uv
-- Google Gemini API key
 
 ### 1. Clone the repository
 
@@ -109,43 +86,31 @@ cd Netsol
 
 ### 2. Install dependencies
 
+Install uv if it is not already installed.
+
 ```bash
 uv sync
 ```
 
 ### 3. Configure environment variables
 
-Create a `.env` file in the project root.
+Create a `.env` file using `.env.example`.
 
-```env
-GEMINI_API_KEY=your-gemini-api-key
+Configure the required values, including:
 
-DATABASE_URL=postgresql+asyncpg://postgres:password@localhost:5432/netsol
+- Database connection URL
+- JWT authentication settings
+- Gemini API key, if using the LLM functionality
 
-JWT_SECRET_KEY=your-generated-secret-key
-JWT_ALGORITHM=HS256
-ACCESS_TOKEN_EXPIRE_MINUTES=15
-```
+Do not commit your `.env` file or expose API keys.
 
-Generate a strong JWT secret:
-
-```bash
-python -c "import secrets; print(secrets.token_hex(32))"
-```
-
-Never commit your actual `.env` file or expose your API keys and JWT secret.
-
-### 4. Set up the database
-
-Create a PostgreSQL database named `netsol`.
-
-Run database migrations:
+### 4. Run database migrations
 
 ```bash
 uv run alembic upgrade head
 ```
 
-### 5. Start the application
+### 5. Start the development server
 
 ```bash
 uv run uvicorn netsol.app:app --reload --app-dir src
@@ -153,100 +118,138 @@ uv run uvicorn netsol.app:app --reload --app-dir src
 
 The API will be available at:
 
-`http://127.0.0.1:8000`
+```text
+http://127.0.0.1:8000
+```
 
 Interactive API documentation:
 
-`http://127.0.0.1:8000/docs`
+```text
+http://127.0.0.1:8000/docs
+```
 
 ## API Endpoints
 
-All versioned endpoints use the `/api/v1` prefix.
-
-### Health
-
-| Method | Endpoint | Description |
-|---|---|---|
-| GET | `/health` | Check API health |
+All API endpoints are available under `/api/v1`.
 
 ### Authentication
 
 | Method | Endpoint | Description |
 |---|---|---|
-| POST | `/api/v1/auth/register` | Register a new user |
-| POST | `/api/v1/auth/login` | Authenticate and receive a JWT |
+| POST | `/auth/register` | Register a user |
+| POST | `/auth/login` | Authenticate a user |
 
 ### Users
 
 | Method | Endpoint | Description |
 |---|---|---|
-| GET | `/api/v1/users/me` | Retrieve the authenticated user's profile |
+| GET | `/users/me` | Get authenticated user profile |
 
-### Messages and Chat
+### Messages
 
 | Method | Endpoint | Description |
 |---|---|---|
-| GET | `/api/v1/messages` | List messages |
-| POST | `/api/v1/messages` | Create a message |
-| GET | `/api/v1/messages/{message_id}` | Retrieve a message |
-| PUT | `/api/v1/messages/{message_id}` | Update a message |
-| DELETE | `/api/v1/messages/{message_id}` | Delete a message |
-| POST | `/api/v1/chat` | Generate an LLM-powered response |
+| GET | `/messages` | List messages |
+| POST | `/messages` | Create a message |
+| GET | `/messages/{message_id}` | Retrieve a message |
+| PATCH | `/messages/{message_id}` | Update a message |
+| DELETE | `/messages/{message_id}` | Delete a message |
 
-Refer to Swagger UI at `/docs` for the exact request and response schemas.
+### Chat Threads
 
-## JWT Authentication
+All thread endpoints require bearer authentication.
 
-The application uses JSON Web Tokens for stateless access authentication.
+| Method | Endpoint | Description |
+|---|---|---|
+| POST | `/threads` | Create a chat thread |
+| GET | `/threads` | List the authenticated user's threads |
+| GET | `/threads/{thread_id}` | Retrieve an owned thread |
+| PATCH | `/threads/{thread_id}` | Update title or archive status |
+| DELETE | `/threads/{thread_id}` | Permanently delete a thread |
 
-### Login Flow
+### Thread Functionality
 
-1. The user submits their email and password.
-2. The email is normalized.
-3. The user is retrieved from PostgreSQL.
-4. The submitted password is verified against the stored Argon2 hash.
-5. Inactive users and invalid credentials are rejected.
-6. A signed JWT access token is generated.
-
-Example successful login response:
+**Create a thread**
 
 ```json
 {
-  "access_token": "your-jwt-access-token",
-  "token_type": "bearer",
-  "expires_in": 900
+  "title": "My AI Project"
 }
 ```
 
-The access token contains:
+The authenticated user's ID is automatically assigned as the thread owner.
 
-- `sub`: User UUID.
-- `iat`: Token issued-at timestamp.
-- `exp`: Token expiration timestamp.
-- `type`: Token type (`access`).
+**List threads**
 
-The default access-token lifetime is 15 minutes and can be configured through environment variables.
-
-### Protected Routes
-
-Protected endpoints use the `get_current_user` dependency.
-
-For example:
-
-```http
-GET /api/v1/users/me
-Authorization: Bearer <access_token>
+```text
+GET /api/v1/threads?limit=20&offset=0
 ```
 
-The dependency verifies the token signature, expiration, claims, and token type, then retrieves the corresponding user from the database.
+Optional filtering:
 
-It also rejects missing, invalid, expired, or tampered tokens, as well as deleted or inactive users.
+```text
+GET /api/v1/threads?is_archived=true
+```
 
-The API returns a consistent `401 Unauthorized` response for authentication failures.
+Supported query parameters:
+
+- `limit`: Number of records to return (1–100, default 20).
+- `offset`: Number of records to skip (default 0).
+- `is_archived`: Filter by archive status.
+
+The response includes the matching items, total count, limit, and offset.
+
+**Update a thread**
+
+```json
+{
+  "title": "Updated Project Title"
+}
+```
+
+Archive a thread:
+
+```json
+{
+  "is_archived": true
+}
+```
+
+Restore an archived thread:
+
+```json
+{
+  "is_archived": false
+}
+```
+
+Only the title and archive status can be updated.
+
+**Delete a thread**
+
+```text
+DELETE /api/v1/threads/{thread_id}
+```
+
+Returns HTTP `204 No Content` on successful deletion.
+
+### Thread Ownership and Security
+
+- All thread endpoints require an authenticated user.
+- A thread's owner is determined from the authenticated user, not from client-provided data.
+- Users can only retrieve, update, list, or delete their own threads.
+- Accessing another user's thread returns the same `404` response as accessing a nonexistent thread.
+- Deleting a user cascades to their owned threads through the database foreign key.
 
 ## Database Migrations
 
 Alembic manages database schema changes.
+
+Generate a migration:
+
+```bash
+uv run alembic revision --autogenerate -m "migration_description"
+```
 
 Apply migrations:
 
@@ -254,10 +257,10 @@ Apply migrations:
 uv run alembic upgrade head
 ```
 
-Generate a new migration:
+Check the current migration:
 
 ```bash
-uv run alembic revision --autogenerate -m "migration_description"
+uv run alembic current
 ```
 
 Rollback one migration:
@@ -266,7 +269,7 @@ Rollback one migration:
 uv run alembic downgrade -1
 ```
 
-## Running Tests
+## Testing
 
 Run the complete test suite:
 
@@ -274,41 +277,45 @@ Run the complete test suite:
 uv run pytest -q
 ```
 
-Run authentication tests:
+Run a specific test file:
 
 ```bash
 uv run pytest test/test_auth.py -q
 ```
 
-**Important:** Tests use a dedicated `netsol_test` database. Configure `TEST_DATABASE_URL` if needed, and never point the test suite at your development or production database.
-
-The test suite covers registration, password security, login, JWT validation, protected routes, inactive and deleted users, and error handling.
-
-## Docker
-
-Build and start the services:
+Run thread tests:
 
 ```bash
-docker compose up --build
+uv run pytest test/test_threads.py -q
 ```
 
-Stop the services:
+Tests use a dedicated test database configured through `TEST_DATABASE_URL` or the project's test database configuration.
 
-```bash
-docker compose down
+## Error Handling
+
+The API uses centralized exception handling with a consistent error response structure.
+
+Example:
+
+```json
+{
+  "error": {
+    "code": "thread_not_found",
+    "message": "Chat thread was not found.",
+    "request_id": "request-uuid"
+  }
+}
 ```
 
-## Security Considerations
+## Development Notes
 
-- Passwords are stored as Argon2 hashes, never as plaintext.
-- JWT secrets are supplied through environment variables.
-- Access tokens have a configurable expiration time.
-- Token signatures and expiration are verified before accessing protected resources.
-- The application checks the user's current database status on authenticated requests.
-- Unknown email addresses and incorrect passwords return the same generic login error.
-- A precomputed dummy password hash is used for unknown-user verification to reduce timing differences.
-- Sensitive credentials and tokens should never be logged or committed to version control.
+- Use dependency injection for database sessions and authentication.
+- Keep API routes, services, repositories, and schemas separated.
+- Keep database operations asynchronous.
+- Use Alembic for schema changes.
+- Never expose passwords, secret keys, or JWT secrets.
+- Keep user-owned resources protected by owner-scoped database queries.
 
 ## License
 
-This project is intended for learning and backend development purposes.
+Add your project's license information here.

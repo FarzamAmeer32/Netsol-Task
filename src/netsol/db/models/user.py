@@ -4,9 +4,13 @@ from datetime import datetime
 
 from sqlalchemy import Boolean, DateTime, String, func
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from netsol.db.base import Base
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from netsol.db.models.thread import ChatThread
 
 
 class User(Base):
@@ -47,3 +51,9 @@ class User(Base):
         onupdate=func.now(),
         nullable=False,
     )
+
+    threads: Mapped[list["ChatThread"]] = relationship(
+    back_populates="owner",
+    cascade="all, delete",
+    passive_deletes=True,
+)
