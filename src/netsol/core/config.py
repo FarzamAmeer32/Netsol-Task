@@ -17,7 +17,14 @@ class Settings(BaseSettings):
         min_length=1,
         validation_alias="DATABASE_URL",
     )
+    checkpoint_database_url: str = Field(
+        min_length=1,
+        validation_alias="CHECKPOINT_DATABASE_URL",
+    )
 
+    context_max_messages: int = Field(default=30, gt=0)
+    max_context_tokens: int = Field(default=6000, gt=0)
+    
     # JWT configuration
     jwt_secret_key: str = Field(min_length=32)
     jwt_algorithm: str = "HS256"

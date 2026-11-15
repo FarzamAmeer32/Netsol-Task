@@ -15,7 +15,11 @@ from netsol.repositories.message import (
 from netsol.repositories.thread import get_thread_by_id
 from typing import Any
 
-from netsol.services.llm import LLMResult
+from netsol.services.llm import LLMResult,LLMService
+
+from netsol.services.context import build_context
+
+
 
 class ConversationOperationError(Exception):
     pass
@@ -98,28 +102,61 @@ async def validate_thread_for_message(
         await db.rollback()
         raise ConversationOperationError from exc    
 
+
 async def send_message(
     db: AsyncSession,
     chat_graph: Any,
     thread_id: UUID,
     owner_id: UUID,
     content: str,
+    llm_service: LLMService,
 ) -> tuple[ChatMessage, ChatMessage]:
 
+    # 1. Verify that the thread belongs to the authenticated user.
     await validate_thread_for_message(
         db=db,
         thread_id=thread_id,
         owner_id=owner_id,
     )
 
-    # Generate the assistant reply before starting the write transaction.
-    graph_result = await chat_graph.ainvoke({"user_message": content})
-    result = LLMResult(
-    answer=graph_result["answer"],
-    model=graph_result["model"],
-    input_tokens=graph_result.get("input_tokens"),
-    output_tokens=graph_result.get("output_tokens"),)
+    # 2. Build bounded conversation history from PostgreSQL.
+    try:
+        context_messages = await build_context(
+        db=db,
+        thread_id=thread_id,
+        current_message=content,
+        llm_service=llm_service,
+        )
+    finally:
+    # Release the read transaction before invoking the graph.
+        await db.rollback()
+    
 
+    # 3. Generate a stable, namespaced graph thread ID.
+    graph_thread_id = f"chat:{owner_id}:{thread_id}"
+
+    # 4. Invoke LangGraph with previous history and current message.
+    graph_result = await chat_graph.ainvoke(
+        {
+            "context_messages": context_messages,
+            "user_message": content,
+        },
+        config={
+            "configurable": {
+                "thread_id": graph_thread_id,
+            }
+        },
+    )
+
+    # 5. Extract the generated response.
+    result = LLMResult(
+        answer=graph_result["answer"],
+        model=graph_result["model"],
+        input_tokens=graph_result.get("input_tokens"),
+        output_tokens=graph_result.get("output_tokens"),
+    )
+
+    # 6. Save both messages in one database transaction.
     try:
         async with db.begin():
             thread = await lock_thread(
@@ -175,4 +212,4 @@ async def send_message(
 
     except SQLAlchemyError as exc:
         await db.rollback()
-        raise ConversationOperationError from exc    
+        raise ConversationOperationError from exc

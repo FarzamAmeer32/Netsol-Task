@@ -1,9 +1,14 @@
-from typing import Annotated
+
+from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 
-from netsol.api.dependencies import DbSession, get_current_user
+from netsol.api.dependencies import (
+    DbSession,
+    get_checkpointer,
+    get_current_user,
+)
 from netsol.db.models.user import User
 from netsol.schemas.thread import (
     ThreadCreate,
@@ -30,6 +35,11 @@ CurrentUser = Annotated[
     Depends(get_current_user),
 ]
 
+Checkpointer = Annotated[
+    Any,
+    Depends(get_checkpointer),
+]
+
 
 @router.post(
     "",
@@ -48,6 +58,7 @@ async def create_chat_thread(
     )
 
     return thread
+
 
 @router.get(
     "",
@@ -75,6 +86,7 @@ async def list_chat_threads(
         offset=offset,
     )
 
+
 @router.get(
     "/{thread_id}",
     response_model=ThreadResponse,
@@ -99,6 +111,7 @@ async def read_chat_thread(
                 "message": "Chat thread was not found.",
             },
         )
+
 
 @router.patch(
     "/{thread_id}",
@@ -136,7 +149,8 @@ async def update_chat_thread(
                 "code": "invalid_thread_update",
                 "message": "Provide a valid title or archive status to update.",
             },
-        )        
+        )
+
 
 @router.delete(
     "/{thread_id}",
@@ -146,12 +160,14 @@ async def delete_chat_thread(
     thread_id: UUID,
     db: DbSession,
     current_user: CurrentUser,
+    checkpointer: Checkpointer,
 ):
     try:
         await delete_thread(
             db=db,
             thread_id=thread_id,
             owner_id=current_user.id,
+            checkpointer=checkpointer,
         )
 
         return Response(status_code=status.HTTP_204_NO_CONTENT)
@@ -163,4 +179,4 @@ async def delete_chat_thread(
                 "code": "thread_not_found",
                 "message": "Chat thread was not found.",
             },
-        )    
+        )

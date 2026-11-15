@@ -12,3 +12,5 @@ class LLMConfigurationError(Exception):
 class LLMResponseValidationError(Exception):
     """The generated response failed application validation."""
 
+class ContextMessageTooLargeError(Exception):
+    """The current message exceeds the available context token budget."""

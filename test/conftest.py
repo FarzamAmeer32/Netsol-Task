@@ -1,5 +1,12 @@
+
 import asyncio
 import os
+import sys
+
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(
+        asyncio.WindowsSelectorEventLoopPolicy()
+    )
 
 import pytest
 from fastapi.testclient import TestClient
@@ -10,10 +17,25 @@ from sqlalchemy.pool import NullPool
 os.environ.setdefault("GEMINI_API_KEY", "test-key")
 
 from netsol.app import app
+from netsol.api.dependencies import get_checkpointer
 from netsol.core.config import get_settings
 from netsol.db.base import Base
-from netsol.db.models.user import User  # Ensures User is registered in Base.metadata
+from netsol.db.models.user import User
 from netsol.db.session import get_db
+
+
+class FakeCheckpointer:
+
+    def __init__(self):
+        self.deleted_thread_ids = []
+
+    async def adelete_thread(self, thread_id: str) -> None:
+        self.deleted_thread_ids.append(thread_id)
+
+
+@pytest.fixture
+def fake_checkpointer():
+    return FakeCheckpointer()
 
 
 @pytest.fixture
@@ -56,7 +78,8 @@ def test_engine():
 
 
 @pytest.fixture
-def auth_client(test_engine):
+def auth_client(test_engine, fake_checkpointer):
+
     async def override_get_db():
         async with AsyncSession(
             test_engine,
@@ -66,8 +89,13 @@ def auth_client(test_engine):
 
     app.dependency_overrides[get_db] = override_get_db
 
+    app.dependency_overrides[get_checkpointer] = (
+        lambda: fake_checkpointer
+    )
+
     try:
         with TestClient(app) as client:
             yield client
     finally:
         app.dependency_overrides.pop(get_db, None)
+        app.dependency_overrides.pop(get_checkpointer, None)

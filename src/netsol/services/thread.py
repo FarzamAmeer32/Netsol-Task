@@ -1,10 +1,12 @@
+
+from datetime import datetime, timezone
+from typing import Any
+from uuid import UUID
+
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from netsol.db.models.thread import ChatThread
-from datetime import datetime, timezone
-from uuid import UUID
-
 from netsol.repositories.thread import (
     create_thread as create_thread_record,
     delete_thread as delete_thread_record,
@@ -13,11 +15,14 @@ from netsol.repositories.thread import (
     update_thread as update_thread_record,
 )
 
+
 class ThreadOperationError(Exception):
     pass
 
+
 class ThreadNotFoundError(Exception):
     pass
+
 
 class EmptyThreadUpdateError(Exception):
     pass
@@ -48,6 +53,7 @@ async def create_thread(
         await db.rollback()
         raise ThreadOperationError from exc
 
+
 async def get_threads(
     db: AsyncSession,
     owner_id,
@@ -67,7 +73,6 @@ async def get_threads(
     except SQLAlchemyError as exc:
         await db.rollback()
         raise ThreadOperationError from exc
-
 
 
 async def get_thread(
@@ -138,34 +143,44 @@ async def update_thread(
             await db.refresh(thread)
 
         return thread
-    
+
     except ThreadOperationError:
         raise
 
     except SQLAlchemyError as exc:
         await db.rollback()
-        raise ThreadOperationError from exc    
+        raise ThreadOperationError from exc
+
 
 async def delete_thread(
     db: AsyncSession,
     thread_id: UUID,
     owner_id: UUID,
+    checkpointer: Any,
 ) -> None:
 
     try:
+        # First verify that this thread belongs to the requesting user.
         thread = await get_thread(
             db=db,
             thread_id=thread_id,
             owner_id=owner_id,
         )
 
+        # Build the same namespaced ID used by LangGraph.
+        graph_thread_id = f"chat:{owner_id}:{thread_id}"
+
+        # Delete the LangGraph checkpoint.
+        await checkpointer.adelete_thread(graph_thread_id)
+
+        # Delete the application thread and its messages.
         await delete_thread_record(db, thread)
 
         await db.commit()
 
     except ThreadOperationError:
-        raise    
+        raise
 
     except SQLAlchemyError as exc:
         await db.rollback()
-        raise ThreadOperationError from exc    
+        raise ThreadOperationError from exc

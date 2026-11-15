@@ -8,8 +8,10 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from langgraph.checkpoint.memory import MemorySaver
+
 from netsol.app import app
-from netsol.api.dependencies import get_chat_graph
+from netsol.api.dependencies import get_chat_graph, get_llm_service
 from netsol.core.exceptions import (
     LLMRateLimitError,
     LLMUnavailableError,
@@ -23,6 +25,9 @@ import netsol.services.conversation as conversation_service
 class FakeLLMService:
     def __init__(self, error=None):
         self.error = error
+
+    async def count_tokens(self, text: str) -> int:
+        return len(text.split())
 
     async def generate_reply(self, message: str) -> LLMResult:
         if self.error:
@@ -41,12 +46,16 @@ def fake_llm():
     fake_service = FakeLLMService()
 
     app.dependency_overrides[get_chat_graph] = (
-        lambda: build_chat_graph(fake_service)
+        lambda: build_chat_graph(fake_service, MemorySaver())
+    )
+    app.dependency_overrides[get_llm_service] = (
+        lambda: fake_service
     )
 
     yield fake_service
 
     app.dependency_overrides.pop(get_chat_graph, None)
+    app.dependency_overrides.pop(get_llm_service, None)
 
 
 def create_authenticated_user(auth_client):
@@ -122,17 +131,20 @@ def test_get_conversation_history(auth_client, fake_llm):
 
     thread_id = thread_response.json()["id"]
 
-    auth_client.post(
-        f"/api/v1/threads/{thread_id}/messages",
-        json={"content": "Hello"},
-        headers=headers,
-    )
+    first_response = auth_client.post(
+    f"/api/v1/threads/{thread_id}/messages",
+    json={"content": "Hello"},
+    headers=headers,
+)
 
-    auth_client.post(
-        f"/api/v1/threads/{thread_id}/messages",
-        json={"content": "How are you?"},
-        headers=headers,
-    )
+    second_response = auth_client.post(
+    f"/api/v1/threads/{thread_id}/messages",
+    json={"content": "How are you?"},
+    headers=headers,
+)
+
+
+    
 
     response = auth_client.get(
         f"/api/v1/threads/{thread_id}/messages",
@@ -162,6 +174,68 @@ def test_get_conversation_history(auth_client, fake_llm):
 
     assert data["has_more"] is False
     assert data["next_cursor"] is None
+    
+
+def test_conversation_recovers_without_previous_checkpoint(
+    auth_client,
+    fake_llm,
+):
+    headers = create_authenticated_user(auth_client)
+
+    thread_response = auth_client.post(
+        "/api/v1/threads",
+        json={"title": "Checkpoint Recovery Test"},
+        headers=headers,
+    )
+
+    thread_id = thread_response.json()["id"]
+
+    # First conversation request.
+    first_response = auth_client.post(
+        f"/api/v1/threads/{thread_id}/messages",
+        json={"content": "My name is Farzam"},
+        headers=headers,
+    )
+
+    assert first_response.status_code == 201
+
+    # Simulate a fresh graph with an empty checkpoint store.
+    fresh_graph = build_chat_graph(
+        fake_llm,
+        MemorySaver(),
+    )
+
+    app.dependency_overrides[get_chat_graph] = (
+        lambda: fresh_graph
+    )
+
+    # Send another message using the fresh graph.
+    second_response = auth_client.post(
+        f"/api/v1/threads/{thread_id}/messages",
+        json={"content": "What is my name?"},
+        headers=headers,
+    )
+
+    assert second_response.status_code == 201
+
+    # Verify the original conversation still exists in PostgreSQL.
+    history_response = auth_client.get(
+        f"/api/v1/threads/{thread_id}/messages",
+        headers=headers,
+    )
+
+    assert history_response.status_code == 200
+
+    messages = history_response.json()["items"]
+
+    assert len(messages) == 4
+    assert messages[0]["content"] == "My name is Farzam"
+    assert messages[2]["content"] == "What is my name?"
+
+    # The new graph receives the previous conversation as context.
+    assert "My name is Farzam" in second_response.json()[
+        "assistant_message"
+    ]["content"]
 
 
 def test_get_conversation_history_pagination(auth_client, fake_llm):
@@ -330,7 +404,10 @@ def test_llm_failure_does_not_save_messages(
     fake_service = FakeLLMService(error=llm_error)
 
     app.dependency_overrides[get_chat_graph] = (
-        lambda: build_chat_graph(fake_service)
+        lambda: build_chat_graph(fake_service, MemorySaver())
+    )
+    app.dependency_overrides[get_llm_service] = (
+        lambda: fake_service
     )
 
     try:
@@ -363,6 +440,7 @@ def test_llm_failure_does_not_save_messages(
 
     finally:
         app.dependency_overrides.pop(get_chat_graph, None)
+        app.dependency_overrides.pop(get_llm_service, None)
 
 
 def test_thread_messages_require_authentication(auth_client, fake_llm):

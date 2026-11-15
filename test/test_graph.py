@@ -2,6 +2,7 @@
 import asyncio
 
 import pytest
+from langgraph.checkpoint.memory import MemorySaver
 
 from netsol.core.config import get_settings
 from netsol.core.exceptions import (
@@ -43,7 +44,10 @@ def test_generate_response_node():
     node = make_generate_response_node(fake_llm)
 
     result = asyncio.run(
-        node({"user_message": "Hello"})
+        node({
+            "context_messages": [],
+            "user_message": "Hello",
+        })
     )
 
     assert result["answer"] == "Test answer"
@@ -90,12 +94,23 @@ def test_complete_graph_execution():
         answer="  Hello from LangGraph!  "
     )
 
-    graph = build_chat_graph(fake_llm)
+    graph = build_chat_graph(
+        fake_llm,
+        MemorySaver(),
+    )
 
     result = asyncio.run(
-        graph.ainvoke({
-            "user_message": "Hello"
-        })
+        graph.ainvoke(
+            {
+                "context_messages": [],
+                "user_message": "Hello",
+            },
+            config={
+                "configurable": {
+                    "thread_id": "test-thread",
+                }
+            },
+        )
     )
 
     assert result["answer"] == "Hello from LangGraph!"
@@ -109,11 +124,22 @@ def test_graph_propagates_llm_errors():
         error=LLMUnavailableError()
     )
 
-    graph = build_chat_graph(fake_llm)
+    graph = build_chat_graph(
+        fake_llm,
+        MemorySaver(),
+    )
 
     with pytest.raises(LLMUnavailableError):
         asyncio.run(
-            graph.ainvoke({
-                "user_message": "Hello"
-            })
+            graph.ainvoke(
+                {
+                    "context_messages": [],
+                    "user_message": "Hello",
+                },
+                config={
+                    "configurable": {
+                        "thread_id": "test-thread",
+                    }
+                },
+            )
         )

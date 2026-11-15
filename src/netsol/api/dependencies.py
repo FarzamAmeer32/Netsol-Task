@@ -25,6 +25,8 @@ def get_llm_service() -> LLMService:
 def get_chat_graph(request: Request):
     return request.app.state.chat_graph
 
+def get_checkpointer(request: Request):
+    return request.app.state.checkpointer
 
 DbSession = Annotated[
     AsyncSession,

@@ -311,7 +311,11 @@ def test_get_unknown_thread_returns_404(auth_client):
     assert response.json()["error"]["code"] == "thread_not_found"
     assert response.json()["error"]["message"] == "Chat thread was not found."
 
-def test_delete_thread_success(auth_client):
+
+def test_delete_thread_success(
+    auth_client,
+    fake_checkpointer,
+):
     headers = create_authenticated_user(auth_client)
 
     create_response = auth_client.post(
@@ -320,7 +324,11 @@ def test_delete_thread_success(auth_client):
         headers=headers,
     )
 
+    assert create_response.status_code == 201
+
     thread_id = create_response.json()["id"]
+
+    owner_id = create_response.json()["owner_id"]
 
     delete_response = auth_client.delete(
         f"/api/v1/threads/{thread_id}",
@@ -330,6 +338,14 @@ def test_delete_thread_success(auth_client):
     assert delete_response.status_code == 204
     assert delete_response.content == b""
 
+    # Verify that the corresponding LangGraph checkpoint was deleted.
+    expected_graph_thread_id = f"chat:{owner_id}:{thread_id}"
+
+    assert fake_checkpointer.deleted_thread_ids == [
+        expected_graph_thread_id
+    ]
+
+    # Verify that the application thread was deleted too.
     get_response = auth_client.get(
         f"/api/v1/threads/{thread_id}",
         headers=headers,
@@ -338,7 +354,8 @@ def test_delete_thread_success(auth_client):
     assert get_response.status_code == 404
     assert get_response.json()["error"]["code"] == "thread_not_found"
 
-def test_user_cannot_delete_another_users_thread(auth_client):
+
+def test_user_cannot_delete_another_users_thread(auth_client,fake_checkpointer):
     owner_headers = create_authenticated_user(auth_client)
     other_headers = create_authenticated_user(auth_client)
 
@@ -357,6 +374,7 @@ def test_user_cannot_delete_another_users_thread(auth_client):
 
     assert response.status_code == 404
     assert response.json()["error"]["code"] == "thread_not_found"
+    
 
     owner_response = auth_client.get(
         f"/api/v1/threads/{thread_id}",
@@ -364,6 +382,7 @@ def test_user_cannot_delete_another_users_thread(auth_client):
     )
 
     assert owner_response.status_code == 200
+    assert fake_checkpointer.deleted_thread_ids == []
 
 def test_threads_require_authentication(auth_client):
     responses = [

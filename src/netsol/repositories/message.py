@@ -95,4 +95,25 @@ async def get_next_sequence(
     last_sequence = result.scalar_one()
 
     return (last_sequence or 0) + 1
-  
+
+async def get_recent_messages(
+    db: AsyncSession,
+    thread_id: uuid.UUID,
+    limit: int,
+) -> list[ChatMessage]:
+
+    query = (
+        select(ChatMessage)
+        .where(ChatMessage.thread_id == thread_id)
+        .order_by(ChatMessage.sequence.desc())
+        .limit(limit)
+    )
+
+    result = await db.execute(query)
+
+    messages = list(result.scalars().all())
+
+    # Restore chronological order.
+    messages.reverse()
+
+    return messages  

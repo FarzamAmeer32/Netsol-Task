@@ -2,7 +2,7 @@
 import re
 from contextlib import asynccontextmanager
 from uuid import uuid4
-
+import logging
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -17,22 +17,36 @@ from netsol.core.exceptions import (
     LLMConfigurationError,
     LLMRateLimitError,
     LLMUnavailableError,
+    ContextMessageTooLargeError,
 )
 from netsol.schemas.chat import ErrorResponse
-
+from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Validate environment configuration.
-    get_settings()
+    # Load and validate environment configuration.
+    settings = get_settings()
 
     # Create the LLM service once.
     llm_service = get_llm_service()
 
-    # Build and compile the graph once.
-    app.state.chat_graph = build_chat_graph(llm_service)
+    # Open the PostgreSQL connection pool.
+    async with AsyncPostgresSaver.from_conn_string(
+        settings.checkpoint_database_url
+    ) as checkpointer:
 
-    yield
+        # Create LangGraph checkpoint tables if they don't exist.
+        await checkpointer.setup()
+        app.state.checkpointer = checkpointer
+
+        # Build and compile the graph with persistent checkpointing.
+        app.state.chat_graph = build_chat_graph(
+            llm_service,
+            checkpointer,
+        )
+
+        yield
 
 
 app = FastAPI(
@@ -56,6 +70,7 @@ async def request_id_middleware(request: Request, call_next):
     try:
         response = await call_next(request)
     except Exception:
+        logger.exception("Unexpected error while processing request")
         # Avoid exposing internal exception details to the client.
         response = error_response(
             request,
@@ -102,6 +117,16 @@ async def llm_unavailable_handler(
         503,
         "llm_unavailable",
         "The chatbot service is temporarily unavailable.",
+    )
+@app.exception_handler(ContextMessageTooLargeError)
+async def context_message_too_large_handler(
+    request: Request, exc: ContextMessageTooLargeError
+):
+    return error_response(
+        request,
+        422,
+        "context_message_too_large",
+        "The current message exceeds the available context token budget.",
     )
 
 

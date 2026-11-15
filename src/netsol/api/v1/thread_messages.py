@@ -1,4 +1,5 @@
-from typing import Annotated,Any
+
+from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -7,6 +8,7 @@ from netsol.api.dependencies import (
     DbSession,
     get_current_user,
     get_chat_graph,
+    get_llm_service,
 )
 from netsol.db.models.user import User
 from netsol.schemas.message import (
@@ -14,6 +16,7 @@ from netsol.schemas.message import (
     MessageListResponse,
     MessagePairResponse,
 )
+from netsol.services.llm import LLMService
 
 from netsol.services.conversation import (
     ConversationOperationError,
@@ -37,8 +40,9 @@ CurrentUser = Annotated[
     Depends(get_current_user),
 ]
 
+ChatGraph = Annotated[Any, Depends(get_chat_graph)]
+LLM = Annotated[LLMService, Depends(get_llm_service)]
 
-chat_graph = Annotated[Any, Depends(get_chat_graph)]  
 
 @router.post(
     "/{thread_id}/messages",
@@ -50,18 +54,19 @@ async def create_thread_message(
     payload: MessageCreate,
     db: DbSession,
     current_user: CurrentUser,
-    chat_graph: chat_graph,
+    chat_graph: ChatGraph,
+    llm_service: LLM,
 ) -> MessagePairResponse:
 
     try:
         user_message, assistant_message = await send_message(
             db=db,
             chat_graph=chat_graph,
+            llm_service=llm_service,
             thread_id=thread_id,
             owner_id=current_user.id,
             content=payload.content,
         )
-    
 
     except ConversationThreadNotFoundError:
         raise HTTPException(
@@ -98,15 +103,16 @@ async def create_thread_message(
                 "message": "AI service is temporarily unavailable.",
             },
         )
+
     except LLMResponseValidationError:
-            raise HTTPException(
-                status_code=502,
-                detail={
-                    "code": "invalid_llm_response",
-                    "message": "The AI service returned an unusable response.",
-                },
-            )
-    
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "code": "invalid_llm_response",
+                "message": "The AI service returned an unusable response.",
+            },
+        )
+
     except ConversationOperationError:
         raise HTTPException(
             status_code=500,
@@ -120,6 +126,7 @@ async def create_thread_message(
         user_message=user_message,
         assistant_message=assistant_message,
     )
+
 
 @router.get(
     "/{thread_id}/messages",
@@ -165,4 +172,4 @@ async def list_thread_messages(
         limit=limit,
         next_cursor=next_cursor,
         has_more=has_more,
-    )    
+    )
