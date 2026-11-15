@@ -1,46 +1,41 @@
 # Netsol API
 
-A backend API built with **FastAPI, PostgreSQL, and SQLAlchemy 2.x**. The project provides authentication, user management, LLM-powered chat functionality, user-owned chat threads, and persistent conversation history.
+A backend API built with **FastAPI, PostgreSQL, SQLAlchemy, and LangGraph**. The project provides user authentication, JWT-based authorization, user-owned chat threads, persistent conversation history, and an AI-powered chat workflow.
 
 ## Features
 
 - RESTful API built with FastAPI
 - User registration and login
-- JWT-based Bearer authentication
+- JWT-based bearer authentication
 - Protected user endpoints
 - PostgreSQL database integration
 - Asynchronous SQLAlchemy 2.x
 - Database migrations using Alembic
-- Gemini LLM integration
-- Chat message management
-- User-owned chat threads
-- Thread archiving and restoration
-- Thread listing with filtering and pagination
-- Persistent conversation messages
-- User and assistant message persistence
-- Sequential message ordering per thread
-- Cursor-based conversation history pagination
-- Thread ownership and resource-level authorization
-- Atomic persistence of user and assistant messages
-- Database cascade deletion
-- Centralized exception handling
-- Request ID middleware
-- Automated testing with pytest
+- User-owned chat thread management
+- Create, list, archive, and restore chat threads
+- Persistent user and assistant messages
+- Conversation history with pagination
+- Google Gemini integration through a provider-independent LLM service
+- LangGraph-based response generation and validation workflow
+- Dependency injection for services and graph execution
+- Centralized application error handling
+- Automated tests using pytest
 
 ## Tech Stack
 
 | Technology | Purpose |
 |---|---|
-| Python 3.12+ | Programming language |
-| FastAPI | Backend framework |
+| Python | Backend programming language |
+| FastAPI | REST API framework |
 | PostgreSQL | Relational database |
-| SQLAlchemy 2.x | ORM and async database operations |
+| SQLAlchemy 2.x | Async ORM |
 | Alembic | Database migrations |
 | Pydantic | Request and response validation |
 | JWT | Authentication |
-| Google Gemini | LLM integration |
-| uv | Dependency and project management |
+| Google Gemini | LLM provider |
+| LangGraph | AI workflow orchestration |
 | pytest | Automated testing |
+| uv | Python dependency management |
 
 ## Project Structure
 
@@ -55,34 +50,31 @@ Netsol/
 │       ├── api/
 │       │   ├── dependencies.py
 │       │   └── v1/
-│       │       ├── router.py
 │       │       ├── auth.py
-│       │       ├── users.py
+│       │       ├── chat.py
 │       │       ├── messages.py
 │       │       ├── threads.py
 │       │       ├── thread_messages.py
-│       │       └── chat.py
+│       │       ├── users.py
+│       │       └── router.py
 │       │
 │       ├── core/
 │       │   ├── config.py
-│       │   ├── security.py
 │       │   └── exceptions.py
 │       │
 │       ├── db/
-│       │   ├── base.py
-│       │   ├── session.py
-│       │   └── models/
-│       │       ├── user.py
-│       │       ├── thread.py
-│       │       └── message.py
+│       │   ├── models/
+│       │   └── session.py
+│       │
+│       ├── graphs/
+│       │   ├── __init__.py
+│       │   ├── builder.py
+│       │   ├── nodes.py
+│       │   └── state.py
 │       │
 │       ├── repositories/
 │       ├── schemas/
 │       ├── services/
-│       │   ├── llm.py
-│       │   ├── thread.py
-│       │   └── conversation.py
-│       │
 │       └── app.py
 │
 ├── test/
@@ -93,42 +85,42 @@ Netsol/
 └── README.md
 ```
 
-## Getting Started
+## Setup and Installation
 
 ### 1. Clone the repository
 
 ```bash
-git clone <your-repository-url>
+git clone <repository-url>
 cd Netsol
 ```
 
 ### 2. Install dependencies
 
-Install uv if it is not already installed.
+Install `uv` if it is not already installed, then run:
 
 ```bash
-uv sync
+uv sync --frozen
 ```
 
 ### 3. Configure environment variables
 
-Create a `.env` file using `.env.example`.
+Create a `.env` file using `.env.example` as a template.
 
-Configure the required values, including:
+Configure the required database connection, JWT settings, and Gemini API key.
 
-- Database connection URL
-- JWT authentication settings
-- Gemini API key
+Do not commit your actual `.env` file or expose API keys.
 
-Do not commit your `.env` file or expose API keys.
+### 4. Configure PostgreSQL
 
-### 4. Run database migrations
+Make sure PostgreSQL is running and the database specified in your environment configuration exists.
+
+### 5. Run database migrations
 
 ```bash
 uv run alembic upgrade head
 ```
 
-### 5. Start the development server
+### 6. Start the development server
 
 ```bash
 uv run uvicorn netsol.app:app --reload --app-dir src
@@ -136,367 +128,172 @@ uv run uvicorn netsol.app:app --reload --app-dir src
 
 The API will be available at:
 
-`http://127.0.0.1:8000`
+```text
+http://127.0.0.1:8000
+```
 
 Interactive API documentation:
 
-`http://127.0.0.1:8000/docs`
+```text
+http://127.0.0.1:8000/docs
+```
 
-## API Endpoints
+## API Overview
 
-All API endpoints are available under `/api/v1`.
+The API provides the following functionality:
 
-### Authentication
+| Area | Functionality |
+|---|---|
+| Health | Application health check |
+| Authentication | User registration and login |
+| Users | Retrieve authenticated user information |
+| Messages | Basic message CRUD operations |
+| Chat | AI-powered chat endpoint |
+| Threads | Create, list, archive, and restore chat threads |
+| Thread Messages | Send messages and retrieve conversation history |
+
+### Thread and Conversation Endpoints
 
 | Method | Endpoint | Description |
 |---|---|---|
-| POST | `/auth/register` | Register a user |
-| POST | `/auth/login` | Authenticate a user |
+| POST | `/api/v1/threads` | Create a chat thread |
+| GET | `/api/v1/threads` | List the authenticated user's threads |
+| PATCH | `/api/v1/threads/{thread_id}` | Update or restore a thread |
+| DELETE | `/api/v1/threads/{thread_id}` | Archive a thread |
+| POST | `/api/v1/threads/{thread_id}/messages` | Send a message and receive an AI response |
+| GET | `/api/v1/threads/{thread_id}/messages` | Retrieve conversation history |
 
-### Users
+Protected endpoints require a valid JWT bearer token.
 
-| Method | Endpoint | Description |
-|---|---|---|
-| GET | `/users/me` | Get authenticated user profile |
+## LangGraph Chat Workflow
 
-### Messages
+Task 10 introduces LangGraph to organize AI response generation into a small, explicit workflow.
 
-These endpoints provide the original message CRUD functionality.
+The workflow contains two nodes:
 
-| Method | Endpoint | Description |
-|---|---|---|
-| GET | `/messages` | List messages |
-| POST | `/messages` | Create a message |
-| GET | `/messages/{message_id}` | Retrieve a message |
-| PATCH | `/messages/{message_id}` | Update a message |
-| DELETE | `/messages/{message_id}` | Delete a message |
+1. **generate_response:** Builds the prompt and calls the existing provider-independent `LLMService`.
+2. **validate_response:** Checks that the generated answer contains visible text, normalizes whitespace, and enforces the configured maximum response length.
 
-### Chat
+### Workflow Diagram
 
-| Method | Endpoint | Description |
-|---|---|---|
-| POST | `/chat` | Generate an AI response |
-
-### Chat Threads
-
-All thread endpoints require Bearer authentication.
-
-| Method | Endpoint | Description |
-|---|---|---|
-| POST | `/threads` | Create a chat thread |
-| GET | `/threads` | List authenticated user's threads |
-| GET | `/threads/{thread_id}` | Retrieve an owned thread |
-| PATCH | `/threads/{thread_id}` | Update title or archive status |
-| DELETE | `/threads/{thread_id}` | Permanently delete a thread |
-
-### Persistent Conversation Messages
-
-These endpoints manage messages associated with individual chat threads.
-
-| Method | Endpoint | Description |
-|---|---|---|
-| POST | `/threads/{thread_id}/messages` | Send a message and generate an AI reply |
-| GET | `/threads/{thread_id}/messages` | Retrieve conversation history |
-
-## Chat Thread Functionality
-
-### Create a thread
-
-```http
-POST /api/v1/threads
+```mermaid
+flowchart TD
+    A([START]) --> B[generate_response]
+    B --> C[validate_response]
+    C --> D([END])
 ```
 
-Request:
+### Graph State
 
-```json
-{
-  "title": "My AI Project"
-}
-```
+The graph receives a typed state containing:
 
-The authenticated user's ID is automatically assigned as the thread owner.
+- `user_message`
+- `answer`
+- `model`
+- `input_tokens`
+- `output_tokens`
 
-### List threads
+The generated answer and usage information are returned through the graph state.
 
-```http
-GET /api/v1/threads?limit=20&offset=0
-```
+### Graph Lifecycle
 
-Optional filtering:
+The graph is built and compiled once during FastAPI application startup. The compiled graph is stored in application state and accessed through dependency injection.
 
-```http
-GET /api/v1/threads?is_archived=true
-```
-
-Supported query parameters:
+The conversation service invokes the graph asynchronously using `ainvoke()`.
 
-- `limit`: Number of records to return (1–100, default 20).
-- `offset`: Number of records to skip (default 0).
-- `is_archived`: Filter by archive status.
+### Responsibilities Outside the Graph
 
-### Update a thread
+The graph is responsible only for AI response generation and validation.
 
-Update the title:
+The following responsibilities remain outside the graph:
 
-```json
-{
-  "title": "Updated Project Title"
-}
-```
+- Authentication and authorization
+- Chat thread ownership checks
+- Archived thread validation
+- Database operations
+- Message persistence
+- Conversation history retrieval
+- HTTP request and response handling
 
-Archive a thread:
+This separation keeps the AI workflow independent of the database and API layer.
 
-```json
-{
-  "is_archived": true
-}
-```
+## Conversation Persistence
 
-Restore an archived thread:
+When a user sends a message:
 
-```json
-{
-  "is_archived": false
-}
-```
+1. The API authenticates the user.
+2. The conversation service verifies thread ownership and archive status.
+3. LangGraph generates and validates the AI response.
+4. The user message and assistant response are persisted together.
+5. The thread's update timestamp is refreshed.
 
-### Delete a thread
+Both messages are saved within a database transaction. If generation or validation fails, no conversation messages are persisted.
 
-```http
-DELETE /api/v1/threads/{thread_id}
-```
+Conversation history is stored in PostgreSQL and retrieved with pagination.
 
-Returns HTTP `204 No Content` on successful deletion.
+## Error Handling
 
-## Persistent Conversation History
+The application handles common failures, including:
 
-Task 09 introduces persistent chat messages associated with user-owned threads.
+- Invalid request data
+- Authentication and authorization failures
+- Missing or inaccessible threads
+- Archived thread message submissions
+- LLM provider unavailability
+- LLM rate limiting
+- Invalid AI responses
+- Database operation failures
 
-Each message contains:
+AI provider failures are handled through application-level exceptions rather than exposing provider-specific errors to API clients.
 
-- Unique UUID
-- Thread ID
-- Role (`user` or `assistant`)
-- Message content
-- Sequence number
-- Optional LLM model information
-- Optional input and output token counts
-- Creation timestamp
-
-### Send a message
-
-```http
-POST /api/v1/threads/{thread_id}/messages
-```
-
-Request:
-
-```json
-{
-  "content": "Explain machine learning."
-}
-```
-
-The API:
-
-1. Authenticates the user.
-2. Verifies thread ownership and archive status.
-3. Sends the current message to the injected LLM service.
-4. Persists the user message and assistant response.
-5. Updates the thread's timestamp.
-6. Returns both persisted messages.
-
-Example response:
-
-```json
-{
-  "user_message": {
-    "id": "user-message-uuid",
-    "role": "user",
-    "content": "Explain machine learning.",
-    "sequence": 1
-  },
-  "assistant_message": {
-    "id": "assistant-message-uuid",
-    "role": "assistant",
-    "content": "Machine learning is a branch of AI...",
-    "sequence": 2,
-    "model": "gemini-2.5-flash",
-    "input_tokens": 10,
-    "output_tokens": 25
-  }
-}
-```
-
-The UUIDs and token counts above are illustrative.
-
-### Retrieve conversation history
-
-```http
-GET /api/v1/threads/{thread_id}/messages
-```
-
-The endpoint returns messages in ascending sequence order.
-
-### Cursor-based pagination
-
-```http
-GET /api/v1/threads/{thread_id}/messages?limit=50
-```
-
-Retrieve the next page using the returned cursor:
-
-```http
-GET /api/v1/threads/{thread_id}/messages?limit=50&after=50
-```
-
-Supported query parameters:
-
-- `limit`: Number of messages returned (1–100, default 50).
-- `after`: Return messages with sequence numbers greater than the supplied cursor.
-
-The response includes:
-
-- `items`: Retrieved messages.
-- `limit`: Requested page size.
-- `next_cursor`: Cursor for the next page, when more results exist.
-- `has_more`: Indicates whether additional messages exist.
-
-### Message ordering
-
-Messages use sequential numbering within each thread.
-
-For example:
-
-| Sequence | Role | Content |
-|---|---|---|
-| 1 | user | Hello |
-| 2 | assistant | Hello! How can I help? |
-| 3 | user | Explain Python |
-| 4 | assistant | Python is a programming language... |
-
-A unique database constraint on `(thread_id, sequence)` prevents duplicate sequence numbers within a thread.
-
-### Transaction and persistence behavior
-
-- The LLM is called before starting the database write transaction.
-- User and assistant messages are persisted together.
-- Both messages receive consecutive sequence numbers.
-- The thread's `updated_at` timestamp is updated in the same transaction.
-- If database persistence fails, the transaction is rolled back.
-- If LLM generation fails, no messages are persisted.
-- A database-level cascade deletes messages when their parent thread is deleted.
-
-### Archived threads
-
-- Archived threads remain readable.
-- New messages cannot be sent to archived threads.
-- Attempting to send a message to an archived thread returns HTTP `409 Conflict`.
-
-## Thread Ownership and Security
-
-- All thread and conversation endpoints require authenticated users.
-- Thread ownership is determined from the authenticated user.
-- Clients cannot assign their own owner IDs.
-- Users can only access their own threads and conversation history.
-- Accessing another user's thread returns `404 Not Found`.
-- Deleting a user cascades to their owned threads.
-- Deleting a thread cascades to its associated messages.
-
-## Database Migrations
-
-Alembic manages database schema changes.
-
-Generate a migration:
-
-```bash
-uv run alembic revision --autogenerate -m "migration_description"
-```
-
-Apply migrations:
-
-```bash
-uv run alembic upgrade head
-```
-
-Check the current migration:
-
-```bash
-uv run alembic current
-```
-
-Rollback one migration:
-
-```bash
-uv run alembic downgrade -1
-```
-
-## Testing
+## Running Tests
 
 Run the complete test suite:
 
 ```bash
-uv run pytest -q
+uv run pytest -v
 ```
 
-Run a specific test file:
+The tests cover API functionality, authentication, authorization, thread management, conversation persistence, pagination, error handling, and LangGraph workflow behavior.
 
-```bash
-uv run pytest test/test_auth.py -q
-```
+The LangGraph tests use a fake LLM service, avoiding real external API calls.
 
-Run thread tests:
+## Configuration
 
-```bash
-uv run pytest test/test_threads.py -q
-```
+Application settings are managed through the configuration module and environment variables.
 
-Run conversation message tests:
+Important configuration includes:
 
-```bash
-uv run pytest test/test_thread_messages.py -q
-```
+- Database connection settings
+- JWT authentication settings
+- Gemini API key
+- LLM model
+- LLM request timeout
+- Maximum input characters
+- Maximum output tokens
+- Maximum output characters
 
-Tests use a dedicated test database configured through `TEST_DATABASE_URL` or the project's test database configuration.
+## Development Scope
 
-LLM services are mocked during tests to avoid external API calls.
+The project is developed incrementally, with each task introducing a specific backend capability.
 
-## Error Handling
+Task 10 introduces LangGraph because the application now has a structured AI workflow that benefits from explicit nodes, state management, and workflow orchestration.
 
-The API uses centralized exception handling with a consistent error response structure.
+LangGraph is currently used for a simple linear workflow. The implementation intentionally does not include checkpointers, conversational memory, RAG, tools, conditional routing, or human-in-the-loop execution.
 
-Example:
+## Future Improvements
 
-```json
-{
-  "error": {
-    "code": "thread_not_found",
-    "message": "Chat thread was not found.",
-    "request_id": "request-uuid"
-  }
-}
-```
+- LangGraph checkpointing and conversation memory
+- More advanced AI workflows
+- Retrieval-Augmented Generation (RAG)
+- Additional LLM providers
+- Improved observability and logging
+- Production deployment and containerization
 
-Common conversation errors include:
+---
 
-| HTTP Status | Error | Description |
-|---|---|---|
-| 401 | `unauthorized` | Authentication required |
-| 404 | `thread_not_found` | Thread not found or not owned by user |
-| 409 | `thread_archived` | Cannot send messages to archived thread |
-| 422 | `validation_error` | Invalid request data |
-| 429 | `llm_rate_limited` | LLM rate limit reached |
-| 503 | `llm_unavailable` | LLM service unavailable |
-| 500 | `conversation_error` | Conversation operation failed |
-
-## Development Notes
-
-- Use dependency injection for database sessions, authentication, and LLM services.
-- Keep API routes, services, repositories, and schemas separated.
-- Keep database operations asynchronous.
-- Use Alembic for schema changes.
-- Use owner-scoped queries for user-owned resources.
-- Never expose passwords, API keys, or JWT secrets.
-- Use database transactions for operations that must succeed or fail together.
-
-
+**Project:** Netsol API  
+**Framework:** FastAPI  
+**Database:** PostgreSQL  
+**AI Workflow:** LangGraph  
+**LLM Provider:** Google Gemini

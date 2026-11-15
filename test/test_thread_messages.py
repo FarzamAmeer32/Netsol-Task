@@ -1,24 +1,24 @@
 
 import uuid
+import asyncio
 
 import pytest
 
+from sqlalchemy import func, select
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from netsol.app import app
-from netsol.api.dependencies import get_llm_service
-from netsol.services.llm import LLMResult
+from netsol.api.dependencies import get_chat_graph
 from netsol.core.exceptions import (
     LLMRateLimitError,
     LLMUnavailableError,
 )
-from sqlalchemy.exc import SQLAlchemyError
-import asyncio
-
-from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncSession
-
+from netsol.graphs.builder import build_chat_graph
+from netsol.services.llm import LLMResult
 from netsol.db.models.message import ChatMessage
-
 import netsol.services.conversation as conversation_service
+
 
 class FakeLLMService:
     def __init__(self, error=None):
@@ -38,13 +38,15 @@ class FakeLLMService:
 
 @pytest.fixture
 def fake_llm():
-    app.dependency_overrides[get_llm_service] = (
-        lambda: FakeLLMService()
+    fake_service = FakeLLMService()
+
+    app.dependency_overrides[get_chat_graph] = (
+        lambda: build_chat_graph(fake_service)
     )
 
-    yield
+    yield fake_service
 
-    app.dependency_overrides.pop(get_llm_service, None)
+    app.dependency_overrides.pop(get_chat_graph, None)
 
 
 def create_authenticated_user(auth_client):
@@ -90,22 +92,21 @@ def test_send_message_success(auth_client, fake_llm):
     user_message = data["user_message"]
     assistant_message = data["assistant_message"]
 
-    # User message
     assert user_message["role"] == "user"
     assert user_message["content"] == "Hello AI"
     assert user_message["sequence"] == 1
 
-    # Assistant message
     assert assistant_message["role"] == "assistant"
-    assert assistant_message["content"] == "Test reply to: Hello AI"
+    assert assistant_message["content"].startswith(
+        "Test reply to:"
+    )
+    assert "Hello AI" in assistant_message["content"]
     assert assistant_message["sequence"] == 2
 
-    # LLM metadata
     assert assistant_message["model"] == "fake-model"
     assert assistant_message["input_tokens"] == 5
     assert assistant_message["output_tokens"] == 10
 
-    # Both messages belong to the same thread
     assert user_message["id"]
     assert assistant_message["id"]
 
@@ -121,21 +122,18 @@ def test_get_conversation_history(auth_client, fake_llm):
 
     thread_id = thread_response.json()["id"]
 
-    # Send first message
     auth_client.post(
         f"/api/v1/threads/{thread_id}/messages",
         json={"content": "Hello"},
         headers=headers,
     )
 
-    # Send second message
     auth_client.post(
         f"/api/v1/threads/{thread_id}/messages",
         json={"content": "How are you?"},
         headers=headers,
     )
 
-    # Retrieve conversation history
     response = auth_client.get(
         f"/api/v1/threads/{thread_id}/messages",
         headers=headers,
@@ -165,6 +163,7 @@ def test_get_conversation_history(auth_client, fake_llm):
     assert data["has_more"] is False
     assert data["next_cursor"] is None
 
+
 def test_get_conversation_history_pagination(auth_client, fake_llm):
     headers = create_authenticated_user(auth_client)
 
@@ -176,7 +175,6 @@ def test_get_conversation_history_pagination(auth_client, fake_llm):
 
     thread_id = thread_response.json()["id"]
 
-    # Create 3 exchanges = 6 messages
     for content in ["First", "Second", "Third"]:
         auth_client.post(
             f"/api/v1/threads/{thread_id}/messages",
@@ -184,7 +182,6 @@ def test_get_conversation_history_pagination(auth_client, fake_llm):
             headers=headers,
         )
 
-    # First page
     first_response = auth_client.get(
         f"/api/v1/threads/{thread_id}/messages?limit=2",
         headers=headers,
@@ -200,7 +197,6 @@ def test_get_conversation_history_pagination(auth_client, fake_llm):
     assert first_data["has_more"] is True
     assert first_data["next_cursor"] == 2
 
-    # Second page
     second_response = auth_client.get(
         f"/api/v1/threads/{thread_id}/messages?limit=2&after=2",
         headers=headers,
@@ -214,7 +210,6 @@ def test_get_conversation_history_pagination(auth_client, fake_llm):
     assert second_data["has_more"] is True
     assert second_data["next_cursor"] == 4
 
-    # Third page
     third_response = auth_client.get(
         f"/api/v1/threads/{thread_id}/messages?limit=2&after=4",
         headers=headers,
@@ -228,7 +223,10 @@ def test_get_conversation_history_pagination(auth_client, fake_llm):
     assert third_data["has_more"] is False
     assert third_data["next_cursor"] is None
 
-def test_user_cannot_access_another_users_messages(auth_client, fake_llm):
+
+def test_user_cannot_access_another_users_messages(
+    auth_client, fake_llm
+):
     owner_headers = create_authenticated_user(auth_client)
     other_headers = create_authenticated_user(auth_client)
 
@@ -248,7 +246,10 @@ def test_user_cannot_access_another_users_messages(auth_client, fake_llm):
     assert response.status_code == 404
     assert response.json()["error"]["code"] == "thread_not_found"
 
-def test_cannot_send_message_to_archived_thread(auth_client, fake_llm):
+
+def test_cannot_send_message_to_archived_thread(
+    auth_client, fake_llm
+):
     headers = create_authenticated_user(auth_client)
 
     thread_response = auth_client.post(
@@ -259,7 +260,6 @@ def test_cannot_send_message_to_archived_thread(auth_client, fake_llm):
 
     thread_id = thread_response.json()["id"]
 
-    # Archive the thread
     archive_response = auth_client.patch(
         f"/api/v1/threads/{thread_id}",
         json={"is_archived": True},
@@ -268,7 +268,6 @@ def test_cannot_send_message_to_archived_thread(auth_client, fake_llm):
 
     assert archive_response.status_code == 200
 
-    # Attempt to send a message
     response = auth_client.post(
         f"/api/v1/threads/{thread_id}/messages",
         json={"content": "Hello"},
@@ -277,6 +276,7 @@ def test_cannot_send_message_to_archived_thread(auth_client, fake_llm):
 
     assert response.status_code == 409
     assert response.json()["error"]["code"] == "thread_archived"
+
 
 @pytest.mark.parametrize(
     "payload",
@@ -313,6 +313,7 @@ def test_send_message_rejects_invalid_input(
     assert response.status_code == 422
     assert response.json()["error"]["code"] == "validation_error"
 
+
 @pytest.mark.parametrize(
     "llm_error, expected_status, expected_code",
     [
@@ -326,37 +327,42 @@ def test_llm_failure_does_not_save_messages(
     expected_status,
     expected_code,
 ):
-    app.dependency_overrides[get_llm_service] = (
-        lambda: FakeLLMService(error=llm_error)
+    fake_service = FakeLLMService(error=llm_error)
+
+    app.dependency_overrides[get_chat_graph] = (
+        lambda: build_chat_graph(fake_service)
     )
 
-    headers = create_authenticated_user(auth_client)
+    try:
+        headers = create_authenticated_user(auth_client)
 
-    thread_response = auth_client.post(
-        "/api/v1/threads",
-        json={"title": "LLM Failure Test"},
-        headers=headers,
-    )
+        thread_response = auth_client.post(
+            "/api/v1/threads",
+            json={"title": "LLM Failure Test"},
+            headers=headers,
+        )
 
-    thread_id = thread_response.json()["id"]
+        thread_id = thread_response.json()["id"]
 
-    response = auth_client.post(
-        f"/api/v1/threads/{thread_id}/messages",
-        json={"content": "Hello"},
-        headers=headers,
-    )
+        response = auth_client.post(
+            f"/api/v1/threads/{thread_id}/messages",
+            json={"content": "Hello"},
+            headers=headers,
+        )
 
-    assert response.status_code == expected_status
-    assert response.json()["error"]["code"] == expected_code
+        assert response.status_code == expected_status
+        assert response.json()["error"]["code"] == expected_code
 
-    # Verify no messages were saved
-    history_response = auth_client.get(
-        f"/api/v1/threads/{thread_id}/messages",
-        headers=headers,
-    )
+        history_response = auth_client.get(
+            f"/api/v1/threads/{thread_id}/messages",
+            headers=headers,
+        )
 
-    assert history_response.status_code == 200
-    assert history_response.json()["items"] == []
+        assert history_response.status_code == 200
+        assert history_response.json()["items"] == []
+
+    finally:
+        app.dependency_overrides.pop(get_chat_graph, None)
 
 
 def test_thread_messages_require_authentication(auth_client, fake_llm):
@@ -410,6 +416,7 @@ def test_user_cannot_send_message_to_another_users_thread(
     assert response.status_code == 404
     assert response.json()["error"]["code"] == "thread_not_found"
 
+
 def test_empty_thread_returns_empty_history(auth_client, fake_llm):
     headers = create_authenticated_user(auth_client)
 
@@ -431,7 +438,10 @@ def test_empty_thread_returns_empty_history(auth_client, fake_llm):
     assert response.json()["has_more"] is False
     assert response.json()["next_cursor"] is None
 
-def test_archived_thread_messages_are_readable(auth_client, fake_llm):
+
+def test_archived_thread_messages_are_readable(
+    auth_client, fake_llm
+):
     headers = create_authenticated_user(auth_client)
 
     thread_response = auth_client.post(
@@ -491,7 +501,8 @@ def test_message_history_rejects_invalid_pagination(
     )
 
     assert response.status_code == 422
-    assert response.json()["error"]["code"] == "validation_error"    
+    assert response.json()["error"]["code"] == "validation_error"
+
 
 def test_message_pair_rolls_back_if_second_insert_fails(
     auth_client, fake_llm, monkeypatch
@@ -533,14 +544,14 @@ def test_message_pair_rolls_back_if_second_insert_fails(
     assert response.status_code == 500
     assert response.json()["error"]["code"] == "conversation_error"
 
-    # The first insertion must also have been rolled back.
     history_response = auth_client.get(
         f"/api/v1/threads/{thread_id}/messages",
         headers=headers,
     )
 
     assert history_response.status_code == 200
-    assert history_response.json()["items"] == []    
+    assert history_response.json()["items"] == []
+
 
 def test_deleting_thread_deletes_its_messages(
     auth_client, fake_llm, test_engine
@@ -567,7 +578,9 @@ def test_deleting_thread_deletes_its_messages(
             expire_on_commit=False,
         ) as session:
             result = await session.execute(
-                select(func.count()).select_from(ChatMessage).where(
+                select(func.count())
+                .select_from(ChatMessage)
+                .where(
                     ChatMessage.thread_id == uuid.UUID(thread_id)
                 )
             )
@@ -581,5 +594,4 @@ def test_deleting_thread_deletes_its_messages(
     )
 
     assert delete_response.status_code == 204
-
-    assert asyncio.run(count_messages()) == 0    
+    assert asyncio.run(count_messages()) == 0

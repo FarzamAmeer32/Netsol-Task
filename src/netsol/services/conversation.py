@@ -13,7 +13,9 @@ from netsol.repositories.message import (
     lock_thread,
 )
 from netsol.repositories.thread import get_thread_by_id
-from netsol.services.llm import LLMService
+from typing import Any
+
+from netsol.services.llm import LLMResult
 
 class ConversationOperationError(Exception):
     pass
@@ -98,7 +100,7 @@ async def validate_thread_for_message(
 
 async def send_message(
     db: AsyncSession,
-    llm: LLMService,
+    chat_graph: Any,
     thread_id: UUID,
     owner_id: UUID,
     content: str,
@@ -111,7 +113,12 @@ async def send_message(
     )
 
     # Generate the assistant reply before starting the write transaction.
-    result = await llm.generate_reply(content)
+    graph_result = await chat_graph.ainvoke({"user_message": content})
+    result = LLMResult(
+    answer=graph_result["answer"],
+    model=graph_result["model"],
+    input_tokens=graph_result.get("input_tokens"),
+    output_tokens=graph_result.get("output_tokens"),)
 
     try:
         async with db.begin():

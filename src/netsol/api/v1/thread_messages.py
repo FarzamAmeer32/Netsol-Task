@@ -1,4 +1,4 @@
-from typing import Annotated
+from typing import Annotated,Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from netsol.api.dependencies import (
     DbSession,
     get_current_user,
-    get_llm_service,
+    get_chat_graph,
 )
 from netsol.db.models.user import User
 from netsol.schemas.message import (
@@ -14,7 +14,7 @@ from netsol.schemas.message import (
     MessageListResponse,
     MessagePairResponse,
 )
-from netsol.services.llm import LLMService
+
 from netsol.services.conversation import (
     ConversationOperationError,
     ConversationThreadArchivedError,
@@ -26,6 +26,7 @@ from netsol.core.exceptions import (
     LLMConfigurationError,
     LLMRateLimitError,
     LLMUnavailableError,
+    LLMResponseValidationError,
 )
 
 router = APIRouter(prefix="/threads", tags=["Messages"])
@@ -37,10 +38,7 @@ CurrentUser = Annotated[
 ]
 
 
-LLM = Annotated[
-    LLMService,
-    Depends(get_llm_service),
-]
+chat_graph = Annotated[Any, Depends(get_chat_graph)]  
 
 @router.post(
     "/{thread_id}/messages",
@@ -52,17 +50,18 @@ async def create_thread_message(
     payload: MessageCreate,
     db: DbSession,
     current_user: CurrentUser,
-    llm: LLM,
+    chat_graph: chat_graph,
 ) -> MessagePairResponse:
 
     try:
         user_message, assistant_message = await send_message(
             db=db,
-            llm=llm,
+            chat_graph=chat_graph,
             thread_id=thread_id,
             owner_id=current_user.id,
             content=payload.content,
         )
+    
 
     except ConversationThreadNotFoundError:
         raise HTTPException(
@@ -99,7 +98,15 @@ async def create_thread_message(
                 "message": "AI service is temporarily unavailable.",
             },
         )
-
+    except LLMResponseValidationError:
+            raise HTTPException(
+                status_code=502,
+                detail={
+                    "code": "invalid_llm_response",
+                    "message": "The AI service returned an unusable response.",
+                },
+            )
+    
     except ConversationOperationError:
         raise HTTPException(
             status_code=500,

@@ -1,7 +1,7 @@
 from functools import lru_cache
 from typing import Annotated
 
-from fastapi import Depends
+from fastapi import Depends,Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from netsol.db.session import get_db
@@ -21,6 +21,9 @@ from netsol.repositories.user import get_user_by_id
 @lru_cache
 def get_llm_service() -> LLMService:
     return GeminiLLMService()
+
+def get_chat_graph(request: Request):
+    return request.app.state.chat_graph
 
 
 DbSession = Annotated[

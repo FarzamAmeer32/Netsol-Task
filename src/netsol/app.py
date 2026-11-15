@@ -7,6 +7,9 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
+from netsol.api.dependencies import get_llm_service
+from netsol.graphs.builder import build_chat_graph
+
 from netsol.api.v1.health import router as health_router
 from netsol.api.v1.router import router as v1_router
 from netsol.core.config import get_settings
@@ -20,8 +23,15 @@ from netsol.schemas.chat import ErrorResponse
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Validate environment configuration when the app starts.
+    # Validate environment configuration.
     get_settings()
+
+    # Create the LLM service once.
+    llm_service = get_llm_service()
+
+    # Build and compile the graph once.
+    app.state.chat_graph = build_chat_graph(llm_service)
+
     yield
 
 

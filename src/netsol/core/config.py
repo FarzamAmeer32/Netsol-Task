@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     llm_model: str = "gemini-3.5-flash"
     llm_timeout_seconds: float = Field(default=30, gt=0)
     llm_max_input_chars: int = Field(default=4000, gt=0)
+    llm_max_output_chars: int = Field(default=12000, gt=0)
     llm_max_output_tokens: int = Field(default=300, gt=0)
 
     database_url: str = Field(
