@@ -1,27 +1,66 @@
-
-# Python virtual environment
-.venv/
-
-# Python cache files
+# Python
 __pycache__/
 *.py[cod]
-*.egg-info/
+*$py.class
+*.so
 
-# Environment secrets
+# Virtual Environments
+.venv/
+venv/
+env/
+ENV/
+
+# Environment Variables and Secrets
 .env
 .env.*
 !.env.example
 
-# Generated files
-dist/
-build/
+# Testing
 .pytest_cache/
-.mypy_cache/
-.ruff_cache/
 .coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+test-results/
 
-# Editor and OS files
+# Type Checking and Linting
+.mypy_cache/
+.pyright/
+.ruff_cache/
+
+# Build and Distribution
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# IDEs and Editors
 .vscode/
 .idea/
+*.swp
+*.swo
+
+# Operating System
 .DS_Store
 Thumbs.db
+Desktop.ini
+
+# Logs
+*.log
+logs/
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+
+# Docker
+.docker/
+
+# Temporary Files
+tmp/
+temp/
+*.tmp
+
+# Local Database Files
+*.sqlite3
+*.db

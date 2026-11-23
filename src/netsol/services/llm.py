@@ -1,3 +1,4 @@
+
 import asyncio
 from dataclasses import dataclass
 from typing import Protocol
@@ -22,6 +23,9 @@ class LLMResult:
 
 
 class LLMService(Protocol):
+    async def count_tokens(self, message: str) -> int:
+        ...
+
     async def generate_reply(self, message: str) -> LLMResult:
         ...
 
@@ -37,6 +41,37 @@ class GeminiLLMService:
             ),
         )
 
+    async def count_tokens(self, message: str) -> int:
+        try:
+            response = await self.client.aio.models.count_tokens(
+                model=self.settings.llm_model,
+                contents=message,
+            )
+
+        except errors.ClientError as exc:
+            if exc.code == 429:
+                raise LLMRateLimitError() from None
+
+            if exc.code in (401, 403):
+                raise LLMConfigurationError() from None
+
+            raise LLMUnavailableError() from None
+
+        except (
+            errors.ServerError,
+            TimeoutError,
+            asyncio.TimeoutError,
+        ):
+            raise LLMUnavailableError() from None
+
+        except Exception:
+            raise LLMUnavailableError() from None
+
+        if response.total_tokens is None:
+            raise LLMUnavailableError()
+
+        return response.total_tokens
+
     async def generate_reply(self, message: str) -> LLMResult:
         try:
             response = await self.client.aio.models.generate_content(
@@ -46,6 +81,7 @@ class GeminiLLMService:
                     max_output_tokens=self.settings.llm_max_output_tokens,
                 ),
             )
+
         except errors.ClientError as exc:
             if exc.code == 429:
                 raise LLMRateLimitError() from None
@@ -54,12 +90,14 @@ class GeminiLLMService:
                 raise LLMConfigurationError() from None
 
             raise LLMUnavailableError() from None
+
         except (
             errors.ServerError,
             TimeoutError,
             asyncio.TimeoutError,
         ):
             raise LLMUnavailableError() from None
+
         except Exception:
             # Don't expose provider details to the client.
             raise LLMUnavailableError() from None

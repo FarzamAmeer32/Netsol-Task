@@ -8,9 +8,18 @@ authors = [
 ]
 requires-python = ">=3.12"
 dependencies = [
+    "alembic>=1.20.1",
+    "asyncpg>=0.32.0",
+    "email-validator>=2.3.0",
     "fastapi>=0.157.0",
     "google-genai>=2.33.0",
+    "langgraph>=1.2.22",
+    "langgraph-checkpoint-postgres>=3.2.1",
+    "psycopg[binary]>=3.3.9",
+    "pwdlib[argon2]>=0.3.1",
     "pydantic-settings>=2.16.1",
+    "pyjwt>=2.15.1",
+    "sqlalchemy[asyncio]>=2.0",
     "uvicorn>=0.54.0",
 ]
 
@@ -25,4 +34,5 @@ build-backend = "uv_build"
 dev = [
     "httpx>=0.28.1",
     "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.1",
 ]

@@ -2,10 +2,13 @@
 import re
 from contextlib import asynccontextmanager
 from uuid import uuid4
-
+import logging
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+
+from netsol.api.dependencies import get_llm_service
+from netsol.graphs.builder import build_chat_graph
 
 from netsol.api.v1.health import router as health_router
 from netsol.api.v1.router import router as v1_router
@@ -14,15 +17,36 @@ from netsol.core.exceptions import (
     LLMConfigurationError,
     LLMRateLimitError,
     LLMUnavailableError,
+    ContextMessageTooLargeError,
 )
 from netsol.schemas.chat import ErrorResponse
-
+from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Validate environment configuration when the app starts.
-    get_settings()
-    yield
+    # Load and validate environment configuration.
+    settings = get_settings()
+
+    # Create the LLM service once.
+    llm_service = get_llm_service()
+
+    # Open the PostgreSQL connection pool.
+    async with AsyncPostgresSaver.from_conn_string(
+        settings.checkpoint_database_url
+    ) as checkpointer:
+
+        # Create LangGraph checkpoint tables if they don't exist.
+        await checkpointer.setup()
+        app.state.checkpointer = checkpointer
+
+        # Build and compile the graph with persistent checkpointing.
+        app.state.chat_graph = build_chat_graph(
+            llm_service,
+            checkpointer,
+        )
+
+        yield
 
 
 app = FastAPI(
@@ -46,6 +70,7 @@ async def request_id_middleware(request: Request, call_next):
     try:
         response = await call_next(request)
     except Exception:
+        logger.exception("Unexpected error while processing request")
         # Avoid exposing internal exception details to the client.
         response = error_response(
             request,
@@ -93,6 +118,16 @@ async def llm_unavailable_handler(
         "llm_unavailable",
         "The chatbot service is temporarily unavailable.",
     )
+@app.exception_handler(ContextMessageTooLargeError)
+async def context_message_too_large_handler(
+    request: Request, exc: ContextMessageTooLargeError
+):
+    return error_response(
+        request,
+        422,
+        "context_message_too_large",
+        "The current message exceeds the available context token budget.",
+    )
 
 
 @app.exception_handler(LLMRateLimitError)
@@ -125,17 +160,26 @@ async def http_exception_handler(
 ):
     if isinstance(exc.detail, dict):
         code = exc.detail.get("code", "http_error")
-        message = exc.detail.get("message", "The request could not be completed.")
+        message = exc.detail.get(
+            "message",
+            "The request could not be completed.",
+        )
     else:
         code = "http_error"
         message = str(exc.detail)
 
-    return error_response(
+    response = error_response(
         request,
         exc.status_code,
         code,
         message,
     )
+
+    # Preserve additional headers, such as WWW-Authenticate.
+    if exc.headers:
+        response.headers.update(exc.headers)
+
+    return response
 
 
 @app.exception_handler(RequestValidationError)

@@ -5,6 +5,7 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException, Query, Response, status
 from pydantic import BaseModel, Field, field_validator
 
+
 router = APIRouter(tags=["Messages"])
 
 Role = Literal["user", "assistant"]
@@ -89,6 +90,7 @@ async def list_messages(
     offset: int = Query(default=0, ge=0),
     role: Role | None = Query(default=None),
 ):
+    
     results = list(messages.values())
 
     if role is not None:

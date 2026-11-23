@@ -1,110 +1,156 @@
-# Netsol API — Task 04: Application Architecture
+# Netsol API
 
-A modular FastAPI backend that separates API routes, request schemas, application configuration, error handling, and LLM service logic.
-
-This task refactors the Task 03 chatbot into a maintainable architecture while preserving the health check and in-memory messages API.
+A backend API built with **FastAPI, PostgreSQL, SQLAlchemy, and LangGraph**. The project provides user authentication, JWT-based authorization, user-owned chat threads, persistent conversation history, thread-aware conversational memory, and an AI-powered chat workflow.
 
 ## Features
 
-- **Health check:** Verify that the API is responding.
-- **Messages API:** Create, list, retrieve, update, and delete messages using in-memory storage.
-- **Chat API:** Generate AI responses through the Gemini provider.
-- **Dependency injection:** Keep the chat endpoint independent of the concrete LLM implementation.
-- **Configuration management:** Load and validate environment-based settings.
-- **Standardized error responses:** Return consistent JSON error structures.
-- **Request IDs:** Accept valid `X-Request-ID` headers or generate IDs for request tracing.
-- **Automated tests:** Test routes and error handling without making real Gemini API calls.
+- RESTful API built with FastAPI
+- User registration and login
+- JWT-based bearer authentication
+- Protected user endpoints
+- PostgreSQL database integration
+- Asynchronous SQLAlchemy 2.x
+- Database migrations using Alembic
+- User-owned chat thread management
+- Create, list, archive, restore, and delete chat threads
+- Persistent user and assistant messages
+- Conversation history with pagination
+- Thread-aware conversational memory
+- Bounded conversation context using token counting
+- PostgreSQL-backed LangGraph checkpoint persistence
+- Recovery from missing graph checkpoints using database history
+- Checkpoint cleanup when deleting threads
+- Google Gemini integration through a provider-independent LLM service
+- LangGraph-based response generation and validation workflow
+- Dependency injection for services and graph execution
+- Centralized application error handling
+- Automated tests using pytest
+
+## Tech Stack
+
+| Technology | Purpose |
+|---|---|
+| Python | Backend programming language |
+| FastAPI | REST API framework |
+| PostgreSQL | Relational database and checkpoint storage |
+| SQLAlchemy 2.x | Async ORM |
+| Alembic | Database migrations |
+| Pydantic | Request and response validation |
+| JWT | Authentication |
+| Google Gemini | LLM provider |
+| LangGraph | AI workflow orchestration and checkpointing |
+| langgraph-checkpoint-postgres | Persistent graph checkpoint storage |
+| psycopg | PostgreSQL connection for LangGraph checkpointing |
+| pytest | Automated testing |
+| uv | Python dependency management |
 
 ## Project Structure
 
 ```text
-.
+Netsol/
+│
+├── alembic/
+│   └── versions/
+│
 ├── src/
 │   └── netsol/
-│       ├── __init__.py
-│       ├── app.py
 │       ├── api/
 │       │   ├── dependencies.py
 │       │   └── v1/
-│       │       ├── router.py
-│       │       ├── health.py
+│       │       ├── auth.py
+│       │       ├── chat.py
 │       │       ├── messages.py
-│       │       └── chat.py
+│       │       ├── threads.py
+│       │       ├── thread_messages.py
+│       │       ├── users.py
+│       │       └── router.py
+│       │
 │       ├── core/
 │       │   ├── config.py
 │       │   └── exceptions.py
+│       │
+│       ├── db/
+│       │   ├── models/
+│       │   └── session.py
+│       │
+│       ├── graphs/
+│       │   ├── __init__.py
+│       │   ├── builder.py
+│       │   ├── nodes.py
+│       │   └── state.py
+│       │
+│       ├── repositories/
 │       ├── schemas/
-│       │   └── chat.py
-│       └── services/
-│           └── llm.py
-├── tests/
-│   ├── test_messages.py
-│   └── test_chat.py
+│       ├── services/
+│       │   ├── context.py
+│       │   ├── conversation.py
+│       │   └── thread.py
+│       └── app.py
+│
+├── test/
 ├── .env.example
-├── .gitignore
+├── alembic.ini
 ├── pyproject.toml
 ├── uv.lock
 └── README.md
 ```
 
-The structure above describes the intended layout. Keep any additional files already required by your project.
+## Setup and Installation
 
-## Architecture and Responsibilities
-
-| Component | Responsibility |
-|---|---|
-| `app.py` | Creates the FastAPI application, configures lifespan, middleware, and exception handlers, and registers routers. |
-| `api/v1/router.py` | Combines the versioned messages and chat routers. |
-| `api/v1/health.py` | Provides the health-check endpoint. |
-| `api/v1/messages.py` | Implements message CRUD operations using in-memory storage. |
-| `api/v1/chat.py` | Validates chat requests and invokes the injected LLM service. |
-| `api/dependencies.py` | Provides the LLM service through FastAPI dependency injection. |
-| `schemas/chat.py` | Defines chat request, response, usage, and error models. |
-| `services/llm.py` | Defines the LLM service interface and Gemini implementation. |
-| `core/config.py` | Loads and validates environment-based settings. |
-| `core/exceptions.py` | Defines application-specific LLM exceptions. |
-| `tests/` | Contains automated tests for API behavior and error handling. |
-
-## Setup
-
-### Requirements
-
-- Python 3.12 or later
-- `uv`
-- A Gemini API key for live chat requests
-
-### 1. Install dependencies
-
-From the project root:
+### 1. Clone the repository
 
 ```bash
-uv sync
+git clone <repository-url>
+cd Netsol
 ```
 
-If the test dependencies have not yet been added:
+### 2. Install dependencies
+
+Install `uv` if it is not already installed, then run:
 
 ```bash
-uv add --dev pytest httpx
+uv sync --frozen
 ```
 
-### 2. Configure environment variables
+### 3. Configure environment variables
 
-Create a `.env` file in the project root using `.env.example` as a template.
+Create a `.env` file using `.env.example` as a template.
 
-Example:
+Configure the required:
 
-```dotenv
-GEMINI_API_KEY=your_gemini_api_key
-LLM_MODEL=gemini-2.5-flash
-LLM_TIMEOUT_SECONDS=30
-LLM_MAX_OUTPUT_TOKENS=300
+- Application database connection
+- Checkpoint database connection
+- JWT settings
+- Gemini API key
+- LLM and conversation context settings
+
+The application database uses an asynchronous SQLAlchemy connection.
+
+The checkpoint database uses a PostgreSQL connection supported by `psycopg`.
+
+For example, the checkpoint connection uses the `CHECKPOINT_DATABASE_URL` setting.
+
+Do not commit your actual `.env` file or expose API keys.
+
+### 4. Configure PostgreSQL
+
+Make sure PostgreSQL is running and the databases specified in your environment configuration exist.
+
+The application database stores users, threads, and messages.
+
+The checkpoint database stores LangGraph execution snapshots. It can use a separate database on the same PostgreSQL server.
+
+### 5. Run database migrations
+
+```bash
+uv run alembic upgrade head
 ```
 
-Use your actual API key in your local `.env` file. Do not commit `.env` or expose API keys in source code, logs, or screenshots.
+Alembic manages the application database schema.
 
-The settings names must match those defined in `core/config.py`.
+LangGraph checkpoint tables are initialized separately through the checkpointer's setup process during application startup.
 
-### 3. Run the application
+### 6. Start the development server
 
 ```bash
 uv run uvicorn netsol.app:app --reload --app-dir src
@@ -112,152 +158,263 @@ uv run uvicorn netsol.app:app --reload --app-dir src
 
 The API will be available at:
 
-- Base URL: `http://127.0.0.1:8000`
-- Swagger UI: `http://127.0.0.1:8000/docs`
-- ReDoc: `http://127.0.0.1:8000/redoc`
+`http://127.0.0.1:8000`
 
-## API Endpoints
+Interactive API documentation:
 
-### Health
+`http://127.0.0.1:8000/docs`
 
-| Method | Endpoint | Description |
-|---|---|---|
-| GET | `/health` | Returns the API health status |
-| GET | `/` | Returns basic service information |
+## API Overview
 
-Example response from `GET /health`:
+| Area | Functionality |
+|---|---|
+| Health | Application health check |
+| Authentication | User registration and login |
+| Users | Retrieve authenticated user information |
+| Messages | Basic message CRUD operations |
+| Chat | AI-powered chat endpoint |
+| Threads | Create, list, archive, restore, and delete chat threads |
+| Thread Messages | Send messages and retrieve conversation history |
 
-```json
-{
-  "status": "ok"
-}
-```
-
-### Messages
+### Thread and Conversation Endpoints
 
 | Method | Endpoint | Description |
 |---|---|---|
-| POST | `/api/v1/messages` | Create a message |
-| GET | `/api/v1/messages` | List messages |
-| GET | `/api/v1/messages/{message_id}` | Retrieve a message |
-| PATCH | `/api/v1/messages/{message_id}` | Update message content |
-| DELETE | `/api/v1/messages/{message_id}` | Delete a message |
+| POST | `/api/v1/threads` | Create a chat thread |
+| GET | `/api/v1/threads` | List the authenticated user's threads |
+| GET | `/api/v1/threads/{thread_id}` | Retrieve a thread |
+| PATCH | `/api/v1/threads/{thread_id}` | Update title or archive status |
+| DELETE | `/api/v1/threads/{thread_id}` | Delete a thread and its messages |
+| POST | `/api/v1/threads/{thread_id}/messages` | Send a message and receive an AI response |
+| GET | `/api/v1/threads/{thread_id}/messages` | Retrieve conversation history |
 
-Create a message:
+Protected endpoints require a valid JWT bearer token.
 
-```http
-POST /api/v1/messages
-Content-Type: application/json
+## LangGraph Chat Workflow
+
+The AI response generation process is organized into a LangGraph workflow.
+
+The workflow contains two nodes:
+
+1. **generate_response:** Builds the prompt and calls the provider-independent `LLMService`.
+2. **validate_response:** Checks that the generated answer contains visible text, normalizes whitespace, and enforces the configured maximum response length.
+
+### Workflow Diagram
+
+```mermaid
+flowchart TD
+    A([START]) --> B[generate_response]
+    B --> C[validate_response]
+    C --> D([END])
 ```
 
-```json
-{
-  "role": "user",
-  "content": "Hello"
-}
+### Graph State
+
+The graph uses a typed state containing:
+
+- `context_messages`
+- `user_message`
+- `answer`
+- `model`
+- `input_tokens`
+- `output_tokens`
+
+The conversation context and current user message are supplied separately to avoid duplicating the current message in historical context.
+
+### Graph Lifecycle
+
+The graph is built and compiled during FastAPI application startup.
+
+The application initializes an `AsyncPostgresSaver`, runs its setup process, and compiles the graph with the persistent checkpointer.
+
+The compiled graph and checkpointer are stored in application state and accessed through dependency injection.
+
+The conversation service invokes the graph asynchronously using `ainvoke()`.
+
+## Thread-Aware Conversation Memory
+
+Task 11 introduces thread-aware conversation memory using LangGraph checkpointing and PostgreSQL-backed conversation history.
+
+The implementation separates two responsibilities:
+
+1. **Conversation history:** PostgreSQL stores the complete user and assistant message history.
+2. **Graph execution state:** LangGraph checkpoints preserve graph execution state and snapshots.
+
+The application database remains the source of truth for conversational messages. Checkpoints do not replace the message history.
+
+### Conversation Context Building
+
+Before invoking LangGraph, the conversation service builds a bounded context from previous messages stored in PostgreSQL.
+
+The context builder:
+
+1. Retrieves recent messages for the authorized thread.
+2. Keeps the current user message separate from historical context.
+3. Counts tokens using the configured LLM service.
+4. Accounts for the system prompt and current message.
+5. Adds complete user-assistant exchanges while respecting the configured token budget.
+6. Preserves chronological order when constructing the final context.
+
+The context builder uses configurable message-count and token limits.
+
+A safety margin is added to the token budget to reduce the risk of exceeding the model's context window.
+
+If the system prompt and current message alone exceed the allowed context budget, the request is rejected rather than silently truncating the current message.
+
+Historical messages are not deleted or modified when the context is trimmed.
+
+### Persistent Checkpointing
+
+The graph is compiled with a PostgreSQL-backed checkpointer.
+
+Each application conversation uses a stable, namespaced LangGraph thread ID:
+
+```python
+graph_thread_id = f"chat:{owner_id}:{thread_id}"
 ```
 
-The messages API uses temporary in-memory storage. Messages are lost when the application restarts. No database is introduced in this task.
+This ID associates graph checkpoints with the authenticated user and their application thread.
 
-### Chat
+The namespaced ID provides isolation between different users and conversations.
 
-| Method | Endpoint | Description |
-|---|---|---|
-| POST | `/api/v1/chat` | Generate an AI response |
+The checkpointer stores graph execution state independently of the application's message records.
 
-Example request:
+### Checkpoint and Conversation Recovery
 
-```http
-POST /api/v1/chat
-Content-Type: application/json
-X-Request-ID: chat-test-123
-```
+The application does not depend exclusively on checkpoint state to reconstruct conversational context.
 
-```json
-{
-  "message": "Explain REST APIs in simple words."
-}
-```
+When a request arrives, the context builder retrieves conversation history from PostgreSQL before graph execution.
 
-Example success response:
+Consequently, if a graph checkpoint is missing, the application can rebuild the conversation context using the persisted message history.
 
-```json
-{
-  "answer": "A REST API allows applications to communicate using HTTP.",
-  "model": "gemini-2.5-flash",
-  "usage": {
-    "input_tokens": 10,
-    "output_tokens": 15
-  }
-}
-```
+This makes PostgreSQL message history the recovery source for conversational context.
 
-The answer and token usage depend on the actual provider response.
+### Thread Deletion and Checkpoint Cleanup
+
+When an authenticated user deletes a thread:
+
+1. The application verifies thread ownership.
+2. It constructs the corresponding namespaced graph thread ID.
+3. The checkpointer's `adelete_thread()` method is called.
+4. The application thread and its associated messages are deleted from the database.
+
+This prevents successfully deleted conversations from leaving their associated graph checkpoints behind.
+
+### Responsibilities Outside the Graph
+
+The graph is responsible for AI response generation and validation.
+
+The following responsibilities remain outside the graph:
+
+- Authentication and authorization
+- Chat thread ownership checks
+- Archived thread validation
+- Conversation history retrieval
+- Context construction and token budgeting
+- Database operations
+- Message persistence
+- Checkpoint lifecycle management
+- HTTP request and response handling
+
+This separation keeps the AI workflow independent of the API and application database layers.
+
+## Conversation Persistence Flow
+
+When a user sends a message:
+
+1. The API authenticates the user.
+2. The conversation service verifies thread ownership and archive status.
+3. Previous conversation history is retrieved from PostgreSQL.
+4. The context builder prepares bounded conversational context.
+5. LangGraph is invoked using the stable namespaced thread ID.
+6. The response is generated and validated.
+7. The user message and assistant response are persisted together.
+8. The thread's update timestamp is refreshed.
+
+Both messages are saved within a database transaction. If generation or validation fails, no conversation messages are persisted.
+
+Conversation history remains available through the paginated history endpoint.
 
 ## Error Handling
 
-The application maps known exceptions to safe, consistent error responses.
+The application handles common failures, including:
 
-| HTTP status | Error code | Meaning |
-|---|---|---|
-| 404 | `not_found` | The requested message does not exist. |
-| 422 | `validation_error` | The request data is invalid. |
-| 429 | `llm_rate_limited` | The LLM provider is rate-limiting requests. |
-| 503 | `llm_unavailable` | The LLM provider is unavailable. |
-| 503 | `llm_configuration_error` | The LLM provider configuration is invalid. |
+- Invalid request data
+- Authentication and authorization failures
+- Missing or inaccessible threads
+- Archived thread message submissions
+- LLM provider unavailability
+- LLM rate limiting
+- Invalid AI responses
+- Oversized conversation context
+- Database operation failures
 
-Example error response:
+AI provider failures are handled through application-level exceptions rather than exposing provider-specific errors to API clients.
 
-```json
-{
-  "error": {
-    "code": "llm_unavailable",
-    "message": "The chatbot service is temporarily unavailable.",
-    "request_id": "chat-test-123"
-  }
-}
-```
+## Running Tests
 
-The `X-Request-ID` response header allows a request to be correlated with server-side logs. Unexpected errors should be logged internally without exposing sensitive details to API clients.
-
-## Dependency Injection and Testing
-
-The chat endpoint depends on the `LLMService` interface rather than directly creating a Gemini client inside the route.
-
-FastAPI dependency injection provides the service. Tests can replace that dependency using `app.dependency_overrides` and supply a fake implementation.
-
-This allows tests to verify:
-
-- Successful chat responses.
-- Request validation.
-- LLM provider failures.
-- Rate-limit and configuration errors.
-- Request ID behavior.
-
-The tests do not need a real Gemini API call when the LLM dependency is overridden.
-
-Run the test suite:
+Run the complete test suite:
 
 ```bash
 uv run pytest -v
 ```
 
-Run individual test files:
+The tests cover:
 
-```bash
-uv run pytest tests/test_messages.py -v
-uv run pytest tests/test_chat.py -v
-```
+- API functionality
+- Authentication and authorization
+- Thread creation, updates, and deletion
+- Conversation message persistence
+- Conversation history and pagination
+- Database transaction rollback
+- Archived thread behavior
+- LangGraph workflow execution
+- Context construction and token limits
+- Recovery from missing graph checkpoints
+- Checkpoint deletion and ownership protection
 
-## Scope of Task 04
+The graph tests use fake LLM services and in-memory checkpointing where appropriate, avoiding real external LLM API calls.
 
-This task focuses on application architecture and maintainability.
+## Configuration
 
-It does not introduce:
+Application settings are managed through the configuration module and environment variables.
 
-- PostgreSQL or another database.
-- Authentication or authorization.
-- LangChain or LangGraph.
-- New chatbot functionality beyond the existing LLM integration.
+Important configuration includes:
 
-The goal is to make the existing API easier to maintain, test, and extend in later tasks.
+- Application database connection
+- Checkpoint database connection
+- JWT authentication settings
+- Gemini API key
+- LLM model
+- LLM request timeout
+- Maximum input characters
+- Maximum output tokens
+- Maximum output characters
+- Maximum conversation context tokens
+- Maximum historical messages included in context
+
+## Development Scope
+
+The project is developed incrementally, with each task introducing a specific backend capability.
+
+- **Task 10:** Introduced LangGraph for structured AI response generation and validation.
+- **Task 11:** Introduced thread-aware conversational memory, PostgreSQL-backed graph checkpointing, bounded context construction, recovery from missing checkpoint state, and checkpoint cleanup during thread deletion.
+
+The implementation intentionally keeps authentication, database persistence, and conversation context construction outside the graph.
+
+## Future Improvements
+
+- More advanced AI workflows
+- Retrieval-Augmented Generation (RAG)
+- Additional LLM providers
+- Improved observability and logging
+- Production deployment and containerization
+- More advanced checkpoint lifecycle and recovery monitoring
+
+---
+
+**Project:** Netsol API  
+**Framework:** FastAPI  
+**Database:** PostgreSQL  
+**AI Workflow:** LangGraph  
+**LLM Provider:** Google Gemini
